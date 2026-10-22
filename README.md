@@ -7,7 +7,7 @@ A quiet home screen for Google TV / Android TV: a photo, the time, the weather a
 ## Features
 
 - **Dynamic wallpaper**: landscape photos from Bing's daily image archive, changing every 10 minutes with a slow crossfade. Cached on the TV, so it still works offline.
-- **Top left**: clock, date and current weather for Bucharest ([Open-Meteo](https://open-meteo.com), no API key).
+- **Top left**: clock, date and current weather for the TV's location ([Open-Meteo](https://open-meteo.com), no API key). The location comes from Android's location services (Wi-Fi based on a TV, coarse permission only); without it, Bucharest is used.
 - **Top right**: Google search (voice or keyboard), Play Store, TV settings.
 - **Dock**: YouTube, Netflix, Apple TV, Disney+, Plex, HBO Max, SkyShowtime, live TV, and an **Apps** panel with everything installed (also on the remote's Menu key).
 - Frosted glass rendered from a pre-blurred copy of the wallpaper, so it stays smooth on TV hardware.
@@ -35,6 +35,10 @@ The first build creates a local `debug.keystore` (not committed).
    adb shell cmd package set-home-activity com.frame.home/.HomeActivity
    ```
    On Google TV the stock launcher may also need to be disabled (see `tv.ps1 launcher`).
+4. Allow location when the TV asks (for local weather), or grant it over adb:
+   ```powershell
+   adb shell pm grant com.frame.home android.permission.ACCESS_COARSE_LOCATION
+   ```
 
 ## Customise
 
@@ -42,7 +46,7 @@ The first build creates a local `debug.keystore` (not committed).
 |---|---|
 | Apps in the dock and their order | `FAVOURITES` in `frame/src/com/frame/home/HomeView.java` |
 | Icons | `frame/assets/<glyph id>.png` (white on transparent); without a file, the drawn glyph in `Glyphs.java` is used |
-| Weather location | `Weather.java` (latitude, longitude, `PLACE`) |
+| Weather fallback location | `Weather.java` (`FALLBACK_LAT`, `FALLBACK_LON`, `FALLBACK_PLACE`) |
 | Wallpaper interval / sources | `HomeView.WALLPAPER_INTERVAL`, `Wallpapers.MARKETS` |
 
 ## tv.ps1: debloat helper

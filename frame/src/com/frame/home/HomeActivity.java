@@ -1,5 +1,6 @@
 package com.frame.home;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
@@ -9,6 +10,7 @@ import android.view.KeyEvent;
 
 /** Home screen activity. All drawing and remote handling lives in {@link HomeView}. */
 public class HomeActivity extends Activity {
+    private static final int REQUEST_LOCATION = 1;
     private HomeView view;
 
     @Override
@@ -17,6 +19,15 @@ public class HomeActivity extends Activity {
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         view = new HomeView(this);
         setContentView(view);
+        // Weather follows the TV's location; without it, Bucharest is used
+        if (!Weather.hasPermission(this)) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_LOCATION);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        if (requestCode == REQUEST_LOCATION && Weather.hasPermission(this)) view.refreshWeather();
     }
 
     @Override

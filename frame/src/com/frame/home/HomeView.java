@@ -73,7 +73,7 @@ public class HomeView extends View {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Wallpapers wallpapers;
-    private final Weather weather = new Weather();
+    private final Weather weather;
     private final PackageManager pm;
 
     private final List<String[]> dock = new ArrayList<>();
@@ -117,6 +117,7 @@ public class HomeView extends View {
         super(context);
         pm = context.getPackageManager();
         wallpapers = new Wallpapers(context);
+        weather = new Weather(context);
         Glyphs.init(context);
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(1.5f);
@@ -143,6 +144,12 @@ public class HomeView extends View {
 
     void onPause() {
         handler.removeCallbacksAndMessages(null);
+    }
+
+    /** Re-reads the weather now, e.g. right after location permission is granted. */
+    void refreshWeather() {
+        handler.removeCallbacks(weatherTick);
+        handler.post(weatherTick);
     }
 
     void reset() {
@@ -268,7 +275,8 @@ public class HomeView extends View {
         drawText(c, new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now), MARGIN, 236, 34, regular, 0xF0FFFFFF, Paint.Align.LEFT);
         if (report != null) {
             Glyphs.draw(c, report.icon, MARGIN + 20, 284, 38, 0xF0FFFFFF);
-            drawText(c, report.temperature + "°  " + Weather.PLACE, MARGIN + 54, 297, 30, regular, 0xE6FFFFFF, Paint.Align.LEFT);
+            String weatherText = report.temperature + "°" + (report.place.isEmpty() ? "" : "  " + report.place);
+            drawText(c, weatherText, MARGIN + 54, 297, 30, regular, 0xE6FFFFFF, Paint.Align.LEFT);
         }
         text.clearShadowLayer();
     }
