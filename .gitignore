@@ -8,3 +8,6 @@ disabled-packages*.txt
 
 # Working screenshots (curated ones live in docs/)
 /*.png
+
+# Built app (attach to a GitHub release instead)
+*.apk

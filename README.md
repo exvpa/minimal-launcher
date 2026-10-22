@@ -86,6 +86,6 @@ Find an app's package with `adb shell pm list packages | findstr <name>`.
 
 Tested on a Sony XR-55A83J (Google TV, Android 12) and a TCL Smart TV Pro (Google TV, Android 14).
 
-## Notes
+## License
 
-App names and logos belong to their owners; the sketch-style icons are for personal use. Wallpapers are streamed from Bing and are not part of this repository.
+Code and docs: [MIT](LICENSE). App names and logos belong to their owners and are not covered by the license; the sketch-style icons are for personal use. Wallpapers are streamed from Bing and are not part of this repository.
