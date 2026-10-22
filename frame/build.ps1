@@ -39,7 +39,7 @@ foreach ($file in Get-ChildItem "$root\icons" -Filter *.png) {
 
 # Assets are zipped in below: aapt2 -A on Windows stores "assets/icons\x.png" paths that Android can't open
 & "$bt\aapt2.exe" link -o "$out\base.apk" -I $androidJar --manifest "$root\AndroidManifest.xml" `
-    --min-sdk-version 28 --target-sdk-version 34 --version-code 1 --version-name 0.1
+    --min-sdk-version 28 --target-sdk-version 34 --version-code 2 --version-name 0.2
 Check 'aapt2 link'
 
 $sources = Get-ChildItem "$root\src" -Recurse -Filter *.java | ForEach-Object { $_.FullName }
