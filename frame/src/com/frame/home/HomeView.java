@@ -20,7 +20,9 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.net.Uri;
 import android.provider.Settings;
+import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
@@ -64,11 +66,14 @@ public class HomeView extends View {
 
     private static final long WALLPAPER_INTERVAL = 10 * 60 * 1000L;
     private static final long WEATHER_INTERVAL = 15 * 60 * 1000L;
+    private static final long NEWS_INTERVAL = 20 * 60 * 1000L;
+    private static final long HEADLINE_INTERVAL = 15 * 1000L;
 
     // Design canvas and layout, in 1920x1080 pixels
     private static final float W = 1920f, H = 1080f, MARGIN = 96f;
     private static final float ITEM_W = 190f, DOCK_MAX_W = 1720f, DOCK_H = 190f, DOCK_PAD = 14f, DOCK_BOTTOM = 76f;
     private static final float BTN = 64f, BTN_GAP = 10f, BTN_PAD = 8f, TOP_Y = 70f;
+    private static final float NEWS_W = W / 3, NEWS_PAD = 26f, NEWS_GAP = 18f;
     private static final int APP_COLS = 6, APP_ROWS = 3;
     private static final RectF SCREEN = new RectF(0, 0, W, H);
 
@@ -90,6 +95,19 @@ public class HomeView extends View {
     private int dockIndex, topIndex;
     private float focusX;
     private ValueAnimator focusAnim;
+
+    private final News news = new News();
+    private List<News.Item> headlines = new ArrayList<>();
+    private int headlineIndex;
+    private float headlineAlpha = 1f;
+    private boolean newsFocused;
+    private StaticLayout headlineLayout;
+    private float newsH;                 // animated panel height; the panel grows upward from the dock
+    private ValueAnimator newsHAnim;
+    private final TextPaint headlinePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+
+    private boolean settingsOpen;
+    private int settingsRow;
 
     private boolean appsOpen;
     private final List<AppEntry> apps = new ArrayList<>();
@@ -160,6 +178,9 @@ public class HomeView extends View {
             if (current == null) wallpapers.next(this::show);
         });
         handler.post(weatherTick);
+        // News after the weather, so the location's country is usually known by then
+        if (newsEnabled()) handler.postDelayed(newsTick, 3000);
+        handler.postDelayed(headlineTick, HEADLINE_INTERVAL);
     }
 
     void onPause() {
@@ -174,7 +195,9 @@ public class HomeView extends View {
 
     void reset() {
         appsOpen = false;
+        settingsOpen = false;
         topFocused = false;
+        newsFocused = false;
         if (editing) {
             editing = false;
             saveDock();
@@ -209,6 +232,91 @@ public class HomeView extends View {
             handler.postDelayed(this, WEATHER_INTERVAL);
         }
     };
+
+    private final Runnable newsTick = new Runnable() {
+        @Override
+        public void run() {
+            news.fetch(News.TOPICS[newsTopic()], items -> {
+                headlines = items;
+                showHeadline(0, false);
+            });
+            handler.postDelayed(this, NEWS_INTERVAL);
+        }
+    };
+
+    /** Next headline every 15 s: fade out, swap, fade in. */
+    private final Runnable headlineTick = new Runnable() {
+        @Override
+        public void run() {
+            // Holds still while you're reading it
+            if (!newsFocused) stepHeadline(1);
+            handler.postDelayed(this, HEADLINE_INTERVAL);
+        }
+    };
+
+    /** Fades the text out, swaps to the next/previous headline (resizing the panel), fades in. */
+    private void stepHeadline(int dir) {
+        if (!newsEnabled() || headlines.size() < 2) return;
+        final int next = (headlineIndex + dir + headlines.size()) % headlines.size();
+        final boolean[] swapped = {false};
+        ValueAnimator anim = ValueAnimator.ofFloat(0f, 2f).setDuration(dir == 1 && !newsFocused ? 1200 : 500);
+        anim.addUpdateListener(a -> {
+            float t = (float) a.getAnimatedValue();
+            if (t >= 1f && !swapped[0]) {
+                swapped[0] = true;
+                showHeadline(next, true);
+            }
+            headlineAlpha = Math.abs(1f - t);
+            invalidate();
+        });
+        anim.start();
+        if (newsFocused) playSoundEffect(SoundEffectConstants.CLICK);
+    }
+
+    private void showHeadline(int index, boolean animate) {
+        if (headlines.isEmpty()) return;
+        headlineIndex = index % headlines.size();
+        News.Item item = headlines.get(headlineIndex);
+        headlinePaint.setTypeface(medium);
+        headlinePaint.setTextSize(28);
+        headlinePaint.setColor(0xFFFFFFFF);
+        int width = (int) (NEWS_W - NEWS_PAD * 2);
+        headlineLayout = StaticLayout.Builder.obtain(item.title, 0, item.title.length(), headlinePaint, width)
+                .setMaxLines(5).setEllipsize(TextUtils.TruncateAt.END).setLineSpacing(4f, 1f).build();
+        float target = NEWS_PAD + headlineLayout.getHeight() + 14 + 26 + NEWS_PAD;
+        if (newsHAnim != null) newsHAnim.cancel();
+        if (!animate || newsH == 0) {
+            newsH = target;
+            invalidate();
+            return;
+        }
+        newsHAnim = ValueAnimator.ofFloat(newsH, target).setDuration(260);
+        newsHAnim.setInterpolator(new DecelerateInterpolator());
+        newsHAnim.addUpdateListener(a -> {
+            newsH = (float) a.getAnimatedValue();
+            invalidate();
+        });
+        newsHAnim.start();
+    }
+
+    private boolean newsVisible() {
+        return newsEnabled() && !headlines.isEmpty() && headlineLayout != null;
+    }
+
+    private void openHeadline() {
+        String link = headlines.get(headlineIndex).link;
+        if (link == null || !start(new Intent(Intent.ACTION_VIEW, Uri.parse(link)))) {
+            Toast.makeText(getContext(), "No browser installed to open the article", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean newsEnabled() {
+        return prefs.getBoolean("news", true);
+    }
+
+    private int newsTopic() {
+        return Math.min(prefs.getInt("newsTopic", 0), News.TOPICS.length - 1);
+    }
 
     private void show(Wallpapers.Frame frame) {
         lastWallpaperChange = System.currentTimeMillis();
@@ -276,7 +384,9 @@ public class HomeView extends View {
         drawClock(c);
         drawTopBar(c);
         drawDock(c);
+        drawHeadline(c);
         if (appsOpen) drawApps(c);
+        if (settingsOpen) drawSettings(c);
         c.restore();
     }
 
@@ -364,7 +474,7 @@ public class HomeView extends View {
         RectF r = dockRect();
         float itemW = itemW();
         glass(c, r, 44);
-        if (!topFocused && !appsOpen) {
+        if (!topFocused && !newsFocused && !appsOpen) {
             float x = r.left + DOCK_PAD + focusX * itemW;
             RectF tile = new RectF(x + 4, r.top + DOCK_PAD, x + itemW - 4, r.bottom - DOCK_PAD);
             fill.setColor(editing ? 0x52FFFFFF : 0x38FFFFFF);
@@ -382,7 +492,7 @@ public class HomeView extends View {
         for (int i = 0; i < dock.size(); i++) {
             DockItem item = dock.get(i);
             float cx = r.left + DOCK_PAD + i * itemW + itemW / 2;
-            boolean focused = !topFocused && !appsOpen && i == dockIndex;
+            boolean focused = !topFocused && !newsFocused && !appsOpen && i == dockIndex;
             int color = focused ? 0xFFFFFFFF : 0xD9FFFFFF;
             float lift = focused && editing ? -8 : 0;
             if (item.pkg == null || Glyphs.hasImage(item.iconId())) {
@@ -394,6 +504,70 @@ public class HomeView extends View {
             String label = TextUtils.ellipsize(item.label, text, itemW - 16, TextUtils.TruncateAt.END).toString();
             drawText(c, label, cx, r.top + 152, 26, focused ? medium : regular, color, Paint.Align.CENTER);
         }
+    }
+
+    /**
+     * Glass panel a third of the screen wide, sitting on the dock's left edge. Its bottom is pinned
+     * above the dock; longer headlines make it taller upward only.
+     */
+    private void drawHeadline(Canvas c) {
+        if (!newsVisible() || editing || appsOpen || settingsOpen) return;
+        News.Item item = headlines.get(headlineIndex);
+        RectF dock = dockRect();
+        RectF r = new RectF(dock.left, dock.top - NEWS_GAP - newsH, dock.left + NEWS_W, dock.top - NEWS_GAP);
+        glass(c, r, 32);
+        if (newsFocused) {
+            fill.setColor(0x24FFFFFF);
+            c.drawRoundRect(r, 32, 32, fill);
+            line.setColor(0xB3FFFFFF);
+            line.setStrokeWidth(2.5f);
+            c.drawRoundRect(r, 32, 32, line);
+            line.setStrokeWidth(1.5f);
+        }
+        // Text stays anchored to the bottom while the height animates
+        float textTop = r.bottom - NEWS_PAD - 26 - 14 - headlineLayout.getHeight();
+        headlinePaint.setAlpha((int) (headlineAlpha * 0xF0));
+        c.save();
+        c.clipRect(r);
+        c.translate(r.left + NEWS_PAD, textTop);
+        headlineLayout.draw(c);
+        c.restore();
+        String meta = item.source + (item.time > 0 ? " · " + age(item.time) : "")
+                + (newsFocused ? "     ◀ ▶  more   ·   OK  read" : "");
+        drawText(c, meta, r.left + NEWS_PAD, r.bottom - NEWS_PAD - 4, 22, regular,
+                ((int) (headlineAlpha * 0xA6) << 24) | 0xFFFFFF, Paint.Align.LEFT);
+    }
+
+    private static String age(long time) {
+        long min = Math.max(0, (System.currentTimeMillis() - time) / 60000);
+        if (min < 60) return min + " min ago";
+        if (min < 48 * 60) return (min / 60) + " h ago";
+        return (min / 1440) + " days ago";
+    }
+
+    private void drawSettings(Canvas c) {
+        fill.setColor(0x99000000);
+        c.drawRect(SCREEN, fill);
+        RectF p = new RectF(W / 2 - 420, H / 2 - 230, W / 2 + 420, H / 2 + 230);
+        glass(c, p, 44);
+        drawText(c, "Frame settings", p.left + 56, p.top + 84, 38, medium, 0xFFFFFFFF, Paint.Align.LEFT);
+        String[] labels = {"News headlines", "News topic"};
+        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()]};
+        for (int i = 0; i < labels.length; i++) {
+            RectF row = new RectF(p.left + 32, p.top + 130 + i * 96, p.right - 32, p.top + 210 + i * 96);
+            boolean focused = i == settingsRow;
+            boolean dim = i == 1 && !newsEnabled();
+            if (focused) {
+                fill.setColor(0x38FFFFFF);
+                c.drawRoundRect(row, 28, 28, fill);
+            }
+            int color = dim ? 0x66FFFFFF : 0xF2FFFFFF;
+            drawText(c, labels[i], row.left + 28, row.centerY() + 11, 30, focused ? medium : regular, color, Paint.Align.LEFT);
+            drawText(c, (focused ? "‹  " : "") + values[i] + (focused ? "  ›" : ""), row.right - 28, row.centerY() + 11, 30, medium, color, Paint.Align.RIGHT);
+        }
+        String country = new Locale("", News.country()).getDisplayCountry(Locale.ENGLISH);
+        String source = (Weather.country != null ? "Location: " : "TV region: ") + country;
+        drawText(c, "News from Google News · " + source, p.left + 60, p.bottom - 40, 24, regular, 0x99FFFFFF, Paint.Align.LEFT);
     }
 
     /** Stand-in logo for apps without a library icon: the name, bold, sized to the slot. */
@@ -473,6 +647,10 @@ public class HomeView extends View {
             return true;
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        if (settingsOpen) {
+            settingsKey(k);
+            return true;
+        }
         if (appsOpen) {
             appsKey(k);
             return true;
@@ -484,23 +662,30 @@ public class HomeView extends View {
         switch (k) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (topFocused) moveTopFocus(topIndex - 1);
+                else if (newsFocused) stepHeadline(-1);
                 else moveDockFocus(dockIndex - 1, true);
                 break;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (topFocused) moveTopFocus(topIndex + 1);
+                else if (newsFocused) stepHeadline(1);
                 else moveDockFocus(dockIndex + 1, true);
                 break;
             case KeyEvent.KEYCODE_DPAD_UP:
-                if (!topFocused) {
+                // Dock -> news panel (when shown) -> top bar
+                if (topFocused) break;
+                if (!newsFocused && newsVisible()) newsFocused = true;
+                else {
+                    newsFocused = false;
                     topFocused = true;
-                    playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
-                    invalidate();
                 }
+                playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
+                invalidate();
                 break;
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_BACK:
-                if (topFocused) {
+                if (topFocused || newsFocused) {
                     topFocused = false;
+                    newsFocused = false;
                     playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
                     invalidate();
                 }
@@ -518,7 +703,9 @@ public class HomeView extends View {
     }
 
     private void shortPress() {
-        if (appsOpen) {
+        if (settingsOpen) {
+            changeSetting(1);
+        } else if (appsOpen) {
             if (!apps.isEmpty()) {
                 appsOpen = false;
                 invalidate();
@@ -526,19 +713,61 @@ public class HomeView extends View {
             }
         } else if (editing) {
             finishEditing();
+        } else if (newsFocused) {
+            openHeadline();
         } else {
             activate();
         }
     }
 
     private void longPress() {
-        if (appsOpen) {
+        if (settingsOpen) return;
+        if (topFocused && TOP_BUTTONS[topIndex].equals("settings")) {
+            settingsOpen = true;
+            settingsRow = 0;
+            invalidate();
+        } else if (appsOpen) {
             if (!apps.isEmpty()) addToDock(apps.get(appsIndex));
-        } else if (!editing && !topFocused && dock.get(dockIndex).pkg != null) {
+        } else if (!editing && !topFocused && !newsFocused && dock.get(dockIndex).pkg != null) {
             editing = true;
             playSoundEffect(SoundEffectConstants.CLICK);
             invalidate();
         }
+    }
+
+    // --- settings panel (hold OK on the gear)
+
+    private void settingsKey(int k) {
+        switch (k) {
+            case KeyEvent.KEYCODE_DPAD_UP: settingsRow = Math.max(0, settingsRow - 1); break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: settingsRow = Math.min(1, settingsRow + 1); break;
+            case KeyEvent.KEYCODE_DPAD_LEFT: changeSetting(-1); return;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: changeSetting(1); return;
+            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_MENU:
+                settingsOpen = false;
+                break;
+            default: return;
+        }
+        playSoundEffect(SoundEffectConstants.CLICK);
+        invalidate();
+    }
+
+    private void changeSetting(int dir) {
+        if (settingsRow == 0) {
+            boolean on = !newsEnabled();
+            prefs.edit().putBoolean("news", on).apply();
+            handler.removeCallbacks(newsTick);
+            if (on) handler.post(newsTick);
+            else headlines = new ArrayList<>();
+        } else if (newsEnabled()) {
+            int n = News.TOPICS.length;
+            prefs.edit().putInt("newsTopic", (newsTopic() + dir + n) % n).apply();
+            handler.removeCallbacks(newsTick);
+            handler.post(newsTick);
+        }
+        playSoundEffect(SoundEffectConstants.CLICK);
+        invalidate();
     }
 
     // --- editing the dock

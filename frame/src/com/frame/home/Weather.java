@@ -42,6 +42,9 @@ final class Weather {
         void onReport(Report report);
     }
 
+    /** ISO country of the TV's location (e.g. "RO") once known; the news feed follows it. */
+    static volatile String country;
+
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
     private double placeLat = Double.NaN, placeLon = Double.NaN;
@@ -110,7 +113,8 @@ final class Weather {
                 List<Address> found = new Geocoder(context, Locale.ENGLISH).getFromLocation(lat, lon, 1);
                 if (found != null && !found.isEmpty()) {
                     Address a = found.get(0);
-                    name = a.getLocality() != null ? a.getLocality()
+                    if (a.getCountryCode() != null) country = a.getCountryCode().toUpperCase(Locale.ROOT);
+                    name =a.getLocality() != null ? a.getLocality()
                             : a.getSubAdminArea() != null ? a.getSubAdminArea()
                             : a.getAdminArea() != null ? a.getAdminArea() : "";
                 }

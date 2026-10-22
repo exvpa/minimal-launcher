@@ -10,6 +10,7 @@ A quiet home screen for Google TV / Android TV: a photo, the time, the weather a
 - **Top left**: clock, date and current weather for the TV's location ([Open-Meteo](https://open-meteo.com), no API key). The location comes from Android's location services (Wi-Fi based on a TV, coarse permission only); without it, Bucharest is used.
 - **Top right**: Google search (voice or keyboard), Play Store, TV settings.
 - **Dock** you edit with the remote (up to 10 apps), plus an **Apps** panel with everything installed (also on the remote's Menu key). Starts with YouTube, Netflix, Apple TV, Disney+, Plex, HBO Max, SkyShowtime and live TV.
+- **News panel** above the dock: Google News headlines for the country the TV is in, rotating every 15 s. Press ▲ to select it, ◀ ▶ to browse, OK to open the article. Hold OK on ⚙ for settings (on/off, topic).
 - **Icon library** of sketch-style logos for 30 popular apps, matched by package name; apps without one show their name as a bold wordmark.
 - Frosted glass rendered from a pre-blurred copy of the wallpaper, so it stays smooth on TV hardware.
 - No ads, no recommendations, no accounts. Framework-only Java: no AndroidX, no Gradle.
