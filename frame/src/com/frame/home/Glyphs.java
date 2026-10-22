@@ -1,20 +1,26 @@
 package com.frame.home;
 
 import android.content.Context;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrixColorFilter;
-import android.graphics.Rect;
-
-import java.io.IOException;
-import java.io.InputStream;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Monochrome glyphs drawn from simple shapes. Coordinates are in units where
@@ -28,33 +34,61 @@ final class Glyphs {
 
     private static float u, cx, cy;
 
-    /** Image-based logos from assets/, cropped to their visible pixels. Missing ones fall back to drawn glyphs. */
-    private static final java.util.Map<String, Bitmap> images = new java.util.HashMap<>();
+    /**
+     * Icon library: "<id>.png", where id is an app's package name (or "apps"). Looked up first in the
+     * TV folder (Android/data/com.frame.home/files/icons, filled with adb push), then in the bundled
+     * assets/icons/. Loaded on first use and cropped to their visible pixels.
+     */
+    private static final Map<String, Bitmap> images = new HashMap<>();
+    private static final Set<String> missing = new HashSet<>();
     private static final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private static AssetManager assets;
+    private static File folder;
 
     private Glyphs() {}
 
     static void init(Context context) {
-        if (!images.isEmpty()) return;
-        // assets/<glyph id>.png replaces the drawn glyph with the same id
-        for (String id : new String[]{"youtube", "netflix", "appletv", "disney", "plex", "max", "sky", "tv", "apps"}) {
-            loadImage(context, id, id + ".png");
-        }
+        assets = context.getAssets();
+        folder = context.getExternalFilesDir("icons");
     }
 
-    private static void loadImage(Context context, String id, String asset) {
-        try (InputStream in = context.getAssets().open(asset)) {
-            Bitmap bmp = BitmapFactory.decodeStream(in);
-            if (bmp == null) return;
-            Rect bounds = visibleBounds(bmp);
-            // Keep it small: the dock draws logos at about 60px high
-            float scale = Math.min(1f, 240f / bounds.height());
-            Bitmap cropped = Bitmap.createBitmap(bmp, bounds.left, bounds.top, bounds.width(), bounds.height());
-            images.put(id, Bitmap.createScaledBitmap(cropped,
-                    Math.round(bounds.width() * scale), Math.round(bounds.height() * scale), true));
-        } catch (IOException ignored) {
-            // Use the drawn glyph instead
+    /** Forgets loaded icons, so files newly added to the TV folder show up. */
+    static void reload() {
+        images.clear();
+        missing.clear();
+    }
+
+    static boolean hasImage(String id) {
+        return image(id) != null;
+    }
+
+    private static Bitmap image(String id) {
+        Bitmap bmp = images.get(id);
+        if (bmp != null || missing.contains(id)) return bmp;
+        bmp = decode(id);
+        if (bmp == null) missing.add(id);
+        else images.put(id, bmp);
+        return bmp;
+    }
+
+    private static Bitmap decode(String id) {
+        Bitmap raw = null;
+        File file = folder == null ? null : new File(folder, id + ".png");
+        if (file != null && file.isFile()) raw = BitmapFactory.decodeFile(file.getPath());
+        if (raw == null && assets != null) {
+            try (InputStream in = assets.open("icons/" + id + ".png")) {
+                raw = BitmapFactory.decodeStream(in);
+            } catch (IOException ignored) {
+                // Not in the library
+            }
         }
+        if (raw == null) return null;
+        Rect b = visibleBounds(raw);
+        // The dock draws logos at about 60px high
+        float scale = Math.min(1f, 240f / b.height());
+        Bitmap cropped = Bitmap.createBitmap(raw, b.left, b.top, b.width(), b.height());
+        return Bitmap.createScaledBitmap(cropped,
+                Math.max(1, Math.round(b.width() * scale)), Math.max(1, Math.round(b.height() * scale)), true);
     }
 
     private static Rect visibleBounds(Bitmap bmp) {
@@ -77,9 +111,14 @@ final class Glyphs {
 
     /** Draws a logo image recoloured to the glyph colour. */
     private static boolean drawImage(Canvas c, String id, float centerX, float centerY, float size, int color) {
-        Bitmap bmp = images.get(id);
+        Bitmap bmp = image(id);
         if (bmp == null) return false;
         float h = size * 1.15f, w = h * bmp.getWidth() / bmp.getHeight();
+        if (w > size * 2.6f) {
+            // Very wide wordmarks: fit the width instead
+            h *= size * 2.6f / w;
+            w = size * 2.6f;
+        }
         float r = Color.red(color) / 255f, g = Color.green(color) / 255f, b = Color.blue(color) / 255f, a = Color.alpha(color) / 255f;
         imagePaint.setColorFilter(new ColorMatrixColorFilter(new float[]{
                 0, 0, 0, 0, r * 255,

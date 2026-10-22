@@ -4,6 +4,7 @@ import android.animation.ValueAnimator;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
@@ -45,28 +46,28 @@ import java.util.Set;
  * than with Android's view focus, so remote navigation is fully predictable.
  */
 public class HomeView extends View {
-    /** label, package, glyph. A null package opens the All apps panel. */
-    private static final String[][] FAVOURITES = {
-            {"YouTube", "com.google.android.youtube.tv", "youtube"},
-            {"Netflix", "com.netflix.ninja", "netflix"},
-            {"Apple TV", "com.apple.atve.androidtv.appletv", "appletv"},
-            {"Disney+", "com.disney.disneyplus", "disney"},
-            {"Plex", "com.plexapp.android", "plex"},
-            {"HBO Max", "com.wbd.stream", "max"},
-            {"SkyShowtime", "com.skyshowtime.skyshowtime.google", "sky"},
-            // Live TV: TCL and Sony versions; only the installed one shows
-            {"TV", "com.tcl.tv", "tv"},
-            {"TV", "com.sony.dtv.tvx", "tv"},
-            {"Apps", null, "apps"},
+    /** Dock until the user edits it; packages that aren't installed are skipped. */
+    private static final String[] DEFAULT_DOCK = {
+            "com.google.android.youtube.tv",
+            "com.netflix.ninja",
+            "com.apple.atve.androidtv.appletv",
+            "com.disney.disneyplus",
+            "com.plexapp.android",
+            "com.wbd.stream",
+            "com.skyshowtime.skyshowtime.google",
+            // Live TV: TCL and Sony versions
+            "com.tcl.tv",
+            "com.sony.dtv.tvx",
     };
     private static final String[] TOP_BUTTONS = {"search", "store", "settings"};
+    private static final int MAX_DOCK = 10;
 
     private static final long WALLPAPER_INTERVAL = 10 * 60 * 1000L;
     private static final long WEATHER_INTERVAL = 15 * 60 * 1000L;
 
     // Design canvas and layout, in 1920x1080 pixels
     private static final float W = 1920f, H = 1080f, MARGIN = 96f;
-    private static final float ITEM_W = 190f, DOCK_H = 190f, DOCK_PAD = 14f, DOCK_BOTTOM = 76f;
+    private static final float ITEM_W = 190f, DOCK_MAX_W = 1720f, DOCK_H = 190f, DOCK_PAD = 14f, DOCK_BOTTOM = 76f;
     private static final float BTN = 64f, BTN_GAP = 10f, BTN_PAD = 8f, TOP_Y = 70f;
     private static final int APP_COLS = 6, APP_ROWS = 3;
     private static final RectF SCREEN = new RectF(0, 0, W, H);
@@ -76,7 +77,10 @@ public class HomeView extends View {
     private final Weather weather;
     private final PackageManager pm;
 
-    private final List<String[]> dock = new ArrayList<>();
+    private final SharedPreferences prefs;
+    private final List<DockItem> dock = new ArrayList<>();
+    private boolean editing;        // moving/removing the focused dock app
+    private boolean longPressed;    // OK is held and its long press already acted
     private Wallpapers.Frame current, previous;
     private float fade = 1f;
     private long lastWallpaperChange;
@@ -101,6 +105,20 @@ public class HomeView extends View {
     private final Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
     private final Paint topScrim = new Paint(), bottomScrim = new Paint();
 
+    /** A dock entry. A null package is the Apps button, always last. */
+    private static final class DockItem {
+        final String label, pkg;
+
+        DockItem(String label, String pkg) {
+            this.label = label;
+            this.pkg = pkg;
+        }
+
+        String iconId() {
+            return pkg == null ? "apps" : pkg;
+        }
+    }
+
     private static final class AppEntry {
         final String label, pkg;
         final Drawable banner, icon;
@@ -116,6 +134,7 @@ public class HomeView extends View {
     public HomeView(Context context) {
         super(context);
         pm = context.getPackageManager();
+        prefs = context.getSharedPreferences("dock", Context.MODE_PRIVATE);
         wallpapers = new Wallpapers(context);
         weather = new Weather(context);
         Glyphs.init(context);
@@ -129,6 +148,7 @@ public class HomeView extends View {
     // --- lifecycle
 
     void onResume() {
+        Glyphs.reload();
         loadDock();
         handler.removeCallbacksAndMessages(null);
         handler.post(clockTick);
@@ -155,6 +175,10 @@ public class HomeView extends View {
     void reset() {
         appsOpen = false;
         topFocused = false;
+        if (editing) {
+            editing = false;
+            saveDock();
+        }
         moveDockFocus(0, false);
     }
 
@@ -205,14 +229,38 @@ public class HomeView extends View {
         anim.start();
     }
 
-    /** Favourites that are installed, plus the Apps entry. */
+    /** The saved dock (or the default), installed apps only, plus the Apps entry. */
     private void loadDock() {
+        if (editing) return;
+        String saved = prefs.getString("packages", null);
+        String[] packages = saved == null ? DEFAULT_DOCK : TextUtils.split(saved, ",");
         dock.clear();
-        for (String[] item : FAVOURITES) {
-            if (item[1] == null || launchIntent(item[1]) != null) dock.add(item);
+        for (String pkg : packages) {
+            if (pkg.isEmpty() || launchIntent(pkg) == null) continue;
+            dock.add(new DockItem(label(pkg), pkg));
         }
+        dock.add(new DockItem("Apps", null));
         dockIndex = Math.min(dockIndex, dock.size() - 1);
         focusX = dockIndex;
+    }
+
+    private void saveDock() {
+        List<String> packages = new ArrayList<>();
+        for (DockItem item : dock) if (item.pkg != null) packages.add(item.pkg);
+        prefs.edit().putString("packages", TextUtils.join(",", packages)).apply();
+    }
+
+    private String label(String pkg) {
+        if (pkg.equals("com.tcl.tv") || pkg.equals("com.sony.dtv.tvx")) return "TV";
+        try {
+            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return pkg;
+        }
+    }
+
+    private int dockApps() {
+        return dock.size() - 1;
     }
 
     // --- drawing
@@ -301,27 +349,63 @@ public class HomeView extends View {
         }
     }
 
+    /** Item width shrinks when a full dock would not fit the screen. */
+    private float itemW() {
+        return Math.min(ITEM_W, (DOCK_MAX_W - DOCK_PAD * 2) / dock.size());
+    }
+
     private RectF dockRect() {
-        float w = dock.size() * ITEM_W + DOCK_PAD * 2;
+        float w = dock.size() * itemW() + DOCK_PAD * 2;
         float left = (W - w) / 2, top = H - DOCK_BOTTOM - DOCK_H;
         return new RectF(left, top, left + w, top + DOCK_H);
     }
 
     private void drawDock(Canvas c) {
         RectF r = dockRect();
+        float itemW = itemW();
         glass(c, r, 44);
         if (!topFocused && !appsOpen) {
-            float x = r.left + DOCK_PAD + focusX * ITEM_W;
-            fill.setColor(0x38FFFFFF);
-            c.drawRoundRect(new RectF(x + 4, r.top + DOCK_PAD, x + ITEM_W - 4, r.bottom - DOCK_PAD), 32, 32, fill);
+            float x = r.left + DOCK_PAD + focusX * itemW;
+            RectF tile = new RectF(x + 4, r.top + DOCK_PAD, x + itemW - 4, r.bottom - DOCK_PAD);
+            fill.setColor(editing ? 0x52FFFFFF : 0x38FFFFFF);
+            c.drawRoundRect(tile, 32, 32, fill);
+            if (editing) {
+                line.setColor(0xCCFFFFFF);
+                line.setStrokeWidth(3f);
+                c.drawRoundRect(tile, 32, 32, line);
+                line.setStrokeWidth(1.5f);
+                text.setShadowLayer(12f, 0f, 2f, 0x80000000);
+                drawText(c, "◀ ▶  Move      ▼  Remove      OK  Done", W / 2, r.top - 28, 26, medium, 0xF2FFFFFF, Paint.Align.CENTER);
+                text.clearShadowLayer();
+            }
         }
         for (int i = 0; i < dock.size(); i++) {
-            float cx = r.left + DOCK_PAD + i * ITEM_W + ITEM_W / 2;
+            DockItem item = dock.get(i);
+            float cx = r.left + DOCK_PAD + i * itemW + itemW / 2;
             boolean focused = !topFocused && !appsOpen && i == dockIndex;
             int color = focused ? 0xFFFFFFFF : 0xD9FFFFFF;
-            Glyphs.draw(c, dock.get(i)[2], cx, r.top + 78, 56, color);
-            drawText(c, dock.get(i)[0], cx, r.top + 152, 26, focused ? medium : regular, color, Paint.Align.CENTER);
+            float lift = focused && editing ? -8 : 0;
+            if (item.pkg == null || Glyphs.hasImage(item.iconId())) {
+                Glyphs.draw(c, item.iconId(), cx, r.top + 78 + lift, 56, color);
+            } else {
+                wordmark(c, item.label, cx, r.top + 78 + lift, itemW - 36, color);
+            }
+            text.setTextSize(26);
+            String label = TextUtils.ellipsize(item.label, text, itemW - 16, TextUtils.TruncateAt.END).toString();
+            drawText(c, label, cx, r.top + 152, 26, focused ? medium : regular, color, Paint.Align.CENTER);
         }
+    }
+
+    /** Stand-in logo for apps without a library icon: the name, bold, sized to the slot. */
+    private void wordmark(Canvas c, String label, float cx, float cy, float maxW, int color) {
+        text.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+        float size = 44;
+        text.setTextSize(size);
+        float w = text.measureText(label);
+        if (w > maxW) size = Math.max(22, size * maxW / w);
+        text.setTextSize(size);
+        String s = TextUtils.ellipsize(label, text, maxW, TextUtils.TruncateAt.END).toString();
+        drawText(c, s, cx, cy + size * 0.36f, size, text.getTypeface(), color, Paint.Align.CENTER);
     }
 
     private void drawApps(Canvas c) {
@@ -330,6 +414,7 @@ public class HomeView extends View {
         RectF p = new RectF(160, 110, W - 160, H - 110);
         glass(c, p, 48);
         drawText(c, "All apps", p.left + 64, p.top + 84, 38, medium, 0xFFFFFFFF, Paint.Align.LEFT);
+        drawText(c, "Hold OK to add to the dock", p.right - 64, p.top + 82, 26, regular, 0xB3FFFFFF, Paint.Align.RIGHT);
         float cellW = (p.width() - 80) / APP_COLS, cellH = 220, gridTop = p.top + 120;
         for (int row = 0; row < APP_ROWS; row++) {
             for (int col = 0; col < APP_COLS; col++) {
@@ -373,9 +458,27 @@ public class HomeView extends View {
                 || k == KeyEvent.KEYCODE_NUMPAD_ENTER || k == KeyEvent.KEYCODE_BACK
                 || k == KeyEvent.KEYCODE_MENU || k == KeyEvent.KEYCODE_SEARCH;
         if (!ours) return false;
+        if (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            // OK acts on release; holding it (key repeat) is a long press instead
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) longPressed = false;
+                else if (!longPressed) {
+                    longPressed = true;
+                    longPress();
+                }
+            } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (!longPressed) shortPress();
+                longPressed = false;
+            }
+            return true;
+        }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
         if (appsOpen) {
             appsKey(k);
+            return true;
+        }
+        if (editing) {
+            editKey(k);
             return true;
         }
         switch (k) {
@@ -409,10 +512,84 @@ public class HomeView extends View {
                 openSearch();
                 break;
             default:
-                activate();
                 break;
         }
         return true;
+    }
+
+    private void shortPress() {
+        if (appsOpen) {
+            if (!apps.isEmpty()) {
+                appsOpen = false;
+                invalidate();
+                launch(apps.get(appsIndex).pkg);
+            }
+        } else if (editing) {
+            finishEditing();
+        } else {
+            activate();
+        }
+    }
+
+    private void longPress() {
+        if (appsOpen) {
+            if (!apps.isEmpty()) addToDock(apps.get(appsIndex));
+        } else if (!editing && !topFocused && dock.get(dockIndex).pkg != null) {
+            editing = true;
+            playSoundEffect(SoundEffectConstants.CLICK);
+            invalidate();
+        }
+    }
+
+    // --- editing the dock
+
+    private void editKey(int k) {
+        switch (k) {
+            case KeyEvent.KEYCODE_DPAD_LEFT: moveDockItem(-1); break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: moveDockItem(1); break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: removeDockItem(); break;
+            case KeyEvent.KEYCODE_BACK: finishEditing(); break;
+            default: break;
+        }
+    }
+
+    /** Swaps the focused app with its neighbour; the Apps button stays last. */
+    private void moveDockItem(int dir) {
+        int to = dockIndex + dir;
+        if (to < 0 || to >= dockApps()) return;
+        Collections.swap(dock, dockIndex, to);
+        moveDockFocus(to, true);
+    }
+
+    private void removeDockItem() {
+        DockItem removed = dock.remove(dockIndex);
+        editing = false;
+        saveDock();
+        Toast.makeText(getContext(), removed.label + " removed from the dock", Toast.LENGTH_SHORT).show();
+        moveDockFocus(Math.min(dockIndex, dock.size() - 1), false);
+    }
+
+    private void finishEditing() {
+        editing = false;
+        saveDock();
+        invalidate();
+    }
+
+    private void addToDock(AppEntry app) {
+        for (DockItem item : dock) {
+            if (app.pkg.equals(item.pkg)) {
+                Toast.makeText(getContext(), app.label + " is already in the dock", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        if (dockApps() >= MAX_DOCK) {
+            Toast.makeText(getContext(), "The dock is full. Remove an app first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        dock.add(dockApps(), new DockItem(label(app.pkg), app.pkg));
+        saveDock();
+        Toast.makeText(getContext(), app.label + " added to the dock", Toast.LENGTH_SHORT).show();
+        invalidate();
     }
 
     private void moveTopFocus(int i) {
@@ -450,7 +627,7 @@ public class HomeView extends View {
             }
             return;
         }
-        String pkg = dock.get(dockIndex)[1];
+        String pkg = dock.get(dockIndex).pkg;
         if (pkg == null) openApps();
         else launch(pkg);
     }
@@ -490,14 +667,7 @@ public class HomeView extends View {
                 appsOpen = false;
                 invalidate();
                 return;
-            case KeyEvent.KEYCODE_SEARCH:
-                return;
             default:
-                if (!apps.isEmpty()) {
-                    appsOpen = false;
-                    invalidate();
-                    launch(apps.get(appsIndex).pkg);
-                }
                 return;
         }
         if (i != appsIndex) playSoundEffect(SoundEffectConstants.CLICK);

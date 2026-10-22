@@ -9,7 +9,8 @@ A quiet home screen for Google TV / Android TV: a photo, the time, the weather a
 - **Dynamic wallpaper**: landscape photos from Bing's daily image archive, changing every 10 minutes with a slow crossfade. Cached on the TV, so it still works offline.
 - **Top left**: clock, date and current weather for the TV's location ([Open-Meteo](https://open-meteo.com), no API key). The location comes from Android's location services (Wi-Fi based on a TV, coarse permission only); without it, Bucharest is used.
 - **Top right**: Google search (voice or keyboard), Play Store, TV settings.
-- **Dock**: YouTube, Netflix, Apple TV, Disney+, Plex, HBO Max, SkyShowtime, live TV, and an **Apps** panel with everything installed (also on the remote's Menu key).
+- **Dock** you edit with the remote (up to 10 apps), plus an **Apps** panel with everything installed (also on the remote's Menu key). Starts with YouTube, Netflix, Apple TV, Disney+, Plex, HBO Max, SkyShowtime and live TV.
+- **Icon library** of sketch-style logos for 30 popular apps, matched by package name; apps without one show their name as a bold wordmark.
 - Frosted glass rendered from a pre-blurred copy of the wallpaper, so it stays smooth on TV hardware.
 - No ads, no recommendations, no accounts. Framework-only Java: no AndroidX, no Gradle.
 
@@ -40,12 +41,34 @@ The first build creates a local `debug.keystore` (not committed).
    adb shell pm grant com.frame.home android.permission.ACCESS_COARSE_LOCATION
    ```
 
+## Edit the dock
+
+| Remote | Does |
+|---|---|
+| Hold **OK** on a dock app | Edit mode |
+| **◀ ▶** (in edit mode) | Move it |
+| **▼** (in edit mode) | Remove it |
+| **OK** / **Back** | Done |
+| Hold **OK** in *Apps* | Add that app to the dock |
+
+The dock is saved on the TV. `DEFAULT_DOCK` in `HomeView.java` is only the starting point.
+
+## Icon library
+
+Icons are white-on-transparent PNGs named after the app's package, e.g. `com.netflix.ninja.png` (`apps.png` is the Apps button).
+
+- **Bundled**: put the full-size PNG in `frame/icons/`. The build ships a 256px copy.
+- **On the TV, no rebuild**: push it to the launcher's folder; it's picked up the next time Home opens and wins over a bundled icon with the same name.
+  ```powershell
+  adb push com.example.app.png /sdcard/Android/data/com.frame.home/files/icons/
+  ```
+
+Find an app's package with `adb shell pm list packages | findstr <name>`.
+
 ## Customise
 
 | What | Where |
 |---|---|
-| Apps in the dock and their order | `FAVOURITES` in `frame/src/com/frame/home/HomeView.java` |
-| Icons | `frame/assets/<glyph id>.png` (white on transparent); without a file, the drawn glyph in `Glyphs.java` is used |
 | Weather fallback location | `Weather.java` (`FALLBACK_LAT`, `FALLBACK_LON`, `FALLBACK_PLACE`) |
 | Wallpaper interval / sources | `HomeView.WALLPAPER_INTERVAL`, `Wallpapers.MARKETS` |
 
