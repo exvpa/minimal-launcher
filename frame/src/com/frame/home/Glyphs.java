@@ -37,7 +37,7 @@ final class Glyphs {
     static void init(Context context) {
         if (!images.isEmpty()) return;
         // assets/<glyph id>.png replaces the drawn glyph with the same id
-        for (String id : new String[]{"youtube", "netflix", "appletv", "disney", "plex", "max", "sky", "tv"}) {
+        for (String id : new String[]{"youtube", "netflix", "appletv", "disney", "plex", "max", "sky", "tv", "apps"}) {
             loadImage(context, id, id + ".png");
         }
     }
