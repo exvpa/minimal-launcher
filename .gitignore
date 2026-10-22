@@ -1,0 +1,10 @@
+# Build output and signing key
+frame/out/
+*.keystore
+
+# Per-TV data from tv.ps1 (device scans and restore logs)
+scan-*.txt
+disabled-packages*.txt
+
+# Working screenshots (curated ones live in docs/)
+/*.png

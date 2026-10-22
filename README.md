@@ -1,0 +1,64 @@
+# minimal-launcher
+
+A quiet home screen for Google TV / Android TV: a photo, the time, the weather and your apps on a frosted-glass dock, built for the remote. Inspired by [CleanFrame](https://github.com/nthnclrk/CleanFrame) (Samsung Tizen), rewritten for Android TV.
+
+![Home screen](docs/screenshot.png)
+
+## Features
+
+- **Dynamic wallpaper**: landscape photos from Bing's daily image archive, changing every 10 minutes with a slow crossfade. Cached on the TV, so it still works offline.
+- **Top left**: clock, date and current weather for Bucharest ([Open-Meteo](https://open-meteo.com), no API key).
+- **Top right**: Google search (voice or keyboard), Play Store, TV settings.
+- **Dock**: YouTube, Netflix, Apple TV, Disney+, Plex, HBO Max, SkyShowtime, live TV, and an **Apps** panel with everything installed (also on the remote's Menu key).
+- Frosted glass rendered from a pre-blurred copy of the wallpaper, so it stays smooth on TV hardware.
+- No ads, no recommendations, no accounts. Framework-only Java: no AndroidX, no Gradle.
+
+![All apps](docs/all-apps.png)
+
+## Build
+
+Needs the Android SDK (platform 34, build-tools 35.0.0) and a JDK (tested with 23). The script calls aapt2, javac, d8, zipalign and apksigner directly.
+
+```powershell
+.\frame\build.ps1            # -> frame\out\frame.apk
+.\frame\build.ps1 -Install   # build, install on the TV connected over adb, open it
+```
+
+The first build creates a local `debug.keystore` (not committed).
+
+## Install on a TV
+
+1. Enable Developer options and network/ADB debugging on the TV, then `adb connect <tv-ip>:5555`.
+2. `.\frame\build.ps1 -Install`
+3. Make it the Home app:
+   ```powershell
+   adb shell cmd package set-home-activity com.frame.home/.HomeActivity
+   ```
+   On Google TV the stock launcher may also need to be disabled (see `tv.ps1 launcher`).
+
+## Customise
+
+| What | Where |
+|---|---|
+| Apps in the dock and their order | `FAVOURITES` in `frame/src/com/frame/home/HomeView.java` |
+| Icons | `frame/assets/<glyph id>.png` (white on transparent); without a file, the drawn glyph in `Glyphs.java` is used |
+| Weather location | `Weather.java` (latitude, longitude, `PLACE`) |
+| Wallpaper interval / sources | `HomeView.WALLPAPER_INTERVAL`, `Wallpapers.MARKETS` |
+
+## tv.ps1: debloat helper
+
+`tv.ps1` disables ads, trackers (e.g. Samba TV) and promo apps over adb with `pm disable-user`, and can swap the Home launcher. Everything is reversible:
+
+```powershell
+.\tv.ps1 connect -Ip 192.168.1.50
+.\tv.ps1 scan                 # list packages, change nothing
+.\tv.ps1 debloat              # dry run; add -Apply to disable
+.\tv.ps1 restore -Apply       # re-enable what it disabled (per TV)
+.\tv.ps1 stock-launcher -Apply
+```
+
+Tested on a Sony XR-55A83J (Google TV, Android 12) and a TCL Smart TV Pro (Google TV, Android 14).
+
+## Notes
+
+App names and logos belong to their owners; the sketch-style icons are for personal use. Wallpapers are streamed from Bing and are not part of this repository.
