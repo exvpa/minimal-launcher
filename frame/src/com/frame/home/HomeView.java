@@ -18,6 +18,9 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.media.tv.TvContract;
+import android.media.tv.TvInputInfo;
+import android.media.tv.TvInputManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.net.Uri;
@@ -126,28 +129,81 @@ public class HomeView extends View {
 
     /** A dock entry: an installed app. All apps lives in the top bar. */
     private static final class DockItem {
-        final String label, pkg;
+        final String label, pkg, inputId;   // an app (pkg) or an HDMI input (inputId)
 
-        DockItem(String label, String pkg) {
+        DockItem(String label, String pkg, String inputId) {
             this.label = label;
             this.pkg = pkg;
+            this.inputId = inputId;
         }
 
-        String iconId() {
-            return pkg == null ? "apps" : pkg;
+        /** How the item is saved, and the key for its chosen icon. */
+        String key() {
+            return inputId != null ? INPUT_PREFIX + inputId : pkg;
         }
     }
 
     private static final class AppEntry {
-        final String label, pkg;
+        final String label, pkg, inputId;
         final Drawable banner, icon;
 
-        AppEntry(String label, String pkg, Drawable banner, Drawable icon) {
+        AppEntry(String label, String pkg, String inputId, Drawable banner, Drawable icon) {
             this.label = label;
             this.pkg = pkg;
+            this.inputId = inputId;
             this.banner = banner;
             this.icon = icon;
         }
+
+        String key() {
+            return inputId != null ? INPUT_PREFIX + inputId : pkg;
+        }
+    }
+
+    // --- HDMI inputs
+
+    private static final String INPUT_PREFIX = "input:";
+    /** Icons an input can cycle through in edit mode (frame/icons/input.*.png). */
+    private static final String[] INPUT_ICONS = {"input.hdmi", "input.playstation", "input.xbox", "input.switch"};
+
+    /** The TV's physical HDMI ports (not CEC devices behind them), in port order, hidden ones skipped. */
+    private List<TvInputInfo> hdmiInputs() {
+        List<TvInputInfo> result = new ArrayList<>();
+        TvInputManager tim = (TvInputManager) getContext().getSystemService(Context.TV_INPUT_SERVICE);
+        if (tim == null) return result;
+        for (TvInputInfo info : tim.getTvInputList()) {
+            if (info.getType() == TvInputInfo.TYPE_HDMI && info.getParentId() == null && !info.isHidden(getContext())) {
+                result.add(info);
+            }
+        }
+        Collections.sort(result, (a, b) -> inputLabel(a).compareToIgnoreCase(inputLabel(b)));
+        return result;
+    }
+
+    private TvInputInfo findInput(String id) {
+        for (TvInputInfo info : hdmiInputs()) if (info.getId().equals(id)) return info;
+        return null;
+    }
+
+    /** The name set in the TV's input settings (e.g. "PlayStation"), else "HDMI 1". */
+    private String inputLabel(TvInputInfo info) {
+        CharSequence custom = info.loadCustomLabel(getContext());
+        return (custom != null && custom.length() > 0 ? custom : info.loadLabel(getContext())).toString();
+    }
+
+    /** Chosen icon for a dock item: a saved choice for inputs, else the app's library icon. */
+    private String iconId(DockItem item) {
+        if (item.inputId == null) return item.pkg;
+        return prefs.getString("icon:" + item.key(), INPUT_ICONS[0]);
+    }
+
+    private void cycleInputIcon(DockItem item) {
+        String current = iconId(item);
+        int i = 0;
+        while (i < INPUT_ICONS.length && !INPUT_ICONS[i].equals(current)) i++;
+        prefs.edit().putString("icon:" + item.key(), INPUT_ICONS[(i + 1) % INPUT_ICONS.length]).apply();
+        playSoundEffect(SoundEffectConstants.CLICK);
+        invalidate();
     }
 
     public HomeView(Context context) {
@@ -350,9 +406,13 @@ public class HomeView extends View {
         String saved = prefs.getString("packages", null);
         String[] packages = saved == null ? DEFAULT_DOCK : TextUtils.split(saved, ",");
         dock.clear();
-        for (String pkg : packages) {
-            if (pkg.isEmpty() || launchIntent(pkg) == null) continue;
-            dock.add(new DockItem(label(pkg), pkg));
+        for (String key : packages) {
+            if (key.startsWith(INPUT_PREFIX)) {
+                TvInputInfo info = findInput(key.substring(INPUT_PREFIX.length()));
+                if (info != null) dock.add(new DockItem(inputLabel(info), null, info.getId()));
+            } else if (!key.isEmpty() && launchIntent(key) != null) {
+                dock.add(new DockItem(label(key), key, null));
+            }
         }
         dockIndex = Math.max(0, Math.min(dockIndex, dock.size() - 1));
         focusX = dockIndex;
@@ -360,7 +420,7 @@ public class HomeView extends View {
 
     private void saveDock() {
         List<String> packages = new ArrayList<>();
-        for (DockItem item : dock) if (item.pkg != null) packages.add(item.pkg);
+        for (DockItem item : dock) packages.add(item.key());
         prefs.edit().putString("packages", TextUtils.join(",", packages)).apply();
     }
 
@@ -491,7 +551,10 @@ public class HomeView extends View {
                 c.drawRoundRect(tile, 32, 32, line);
                 line.setStrokeWidth(1.5f);
                 text.setShadowLayer(12f, 0f, 2f, 0x80000000);
-                drawText(c, "◀ ▶  Move      ▼  Remove      OK  Done", W / 2, r.top - 28, 26, medium, 0xF2FFFFFF, Paint.Align.CENTER);
+                String hint = dock.get(dockIndex).inputId != null
+                        ? "◀ ▶  Move      ▲  Icon      ▼  Remove      OK  Done"
+                        : "◀ ▶  Move      ▼  Remove      OK  Done";
+                drawText(c, hint, W / 2, r.top - 28, 26, medium, 0xF2FFFFFF, Paint.Align.CENTER);
                 text.clearShadowLayer();
             }
         }
@@ -501,8 +564,8 @@ public class HomeView extends View {
             boolean focused = !topFocused && !newsFocused && !appsOpen && i == dockIndex;
             int color = focused ? 0xFFFFFFFF : 0xD9FFFFFF;
             float lift = focused && editing ? -8 : 0;
-            if (item.pkg == null || Glyphs.hasImage(item.iconId())) {
-                Glyphs.draw(c, item.iconId(), cx, r.top + 78 + lift, 56, color);
+            if (Glyphs.hasImage(iconId(item))) {
+                Glyphs.draw(c, iconId(item), cx, r.top + 78 + lift, 56, color);
             } else {
                 wordmark(c, item.label, cx, r.top + 78 + lift, itemW - 36, color);
             }
@@ -607,6 +670,12 @@ public class HomeView extends View {
                     c.drawRoundRect(new RectF(x + 8, y, x + cellW - 8, y + cellH - 12), 28, 28, fill);
                 }
                 float cx = x + cellW / 2;
+                if (app.inputId != null) {
+                    // Inputs have no app icon: a dark tile with the HDMI glyph
+                    fill.setColor(0x66000000);
+                    c.drawRoundRect(new RectF(cx - 112, y + 22, cx + 112, y + 148), 14, 14, fill);
+                    Glyphs.draw(c, INPUT_ICONS[0], cx, y + 85, 64, 0xF2FFFFFF);
+                }
                 Drawable d = app.banner != null ? app.banner : app.icon;
                 if (d != null) {
                     if (app.banner != null) d.setBounds((int) (cx - 112), (int) (y + 22), (int) (cx + 112), (int) (y + 148));
@@ -715,7 +784,7 @@ public class HomeView extends View {
             if (!apps.isEmpty()) {
                 appsOpen = false;
                 invalidate();
-                launch(apps.get(appsIndex).pkg);
+                open(apps.get(appsIndex).pkg, apps.get(appsIndex).inputId);
             }
         } else if (editing) {
             finishEditing();
@@ -783,6 +852,9 @@ public class HomeView extends View {
             case KeyEvent.KEYCODE_DPAD_LEFT: moveDockItem(-1); break;
             case KeyEvent.KEYCODE_DPAD_RIGHT: moveDockItem(1); break;
             case KeyEvent.KEYCODE_DPAD_DOWN: removeDockItem(); break;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (dock.get(dockIndex).inputId != null) cycleInputIcon(dock.get(dockIndex));
+                break;
             case KeyEvent.KEYCODE_BACK: finishEditing(); break;
             default: break;
         }
@@ -812,7 +884,7 @@ public class HomeView extends View {
 
     private void addToDock(AppEntry app) {
         for (DockItem item : dock) {
-            if (app.pkg.equals(item.pkg)) {
+            if (app.key().equals(item.key())) {
                 Toast.makeText(getContext(), app.label + " is already in the dock", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -821,7 +893,8 @@ public class HomeView extends View {
             Toast.makeText(getContext(), "The dock is full. Remove an app first.", Toast.LENGTH_SHORT).show();
             return;
         }
-        dock.add(dockApps(), new DockItem(label(app.pkg), app.pkg));
+        dock.add(dockApps(), app.inputId != null ? new DockItem(app.label, null, app.inputId)
+                : new DockItem(label(app.pkg), app.pkg, null));
         saveDock();
         Toast.makeText(getContext(), app.label + " added to the dock", Toast.LENGTH_SHORT).show();
         invalidate();
@@ -864,9 +937,8 @@ public class HomeView extends View {
             return;
         }
         if (dock.isEmpty()) return;
-        String pkg = dock.get(dockIndex).pkg;
-        if (pkg == null) openApps();
-        else launch(pkg);
+        DockItem item = dock.get(dockIndex);
+        open(item.pkg, item.inputId);
     }
 
     // --- all apps panel
@@ -882,10 +954,15 @@ public class HomeView extends View {
                 if (pkg.equals(getContext().getPackageName()) || !seen.add(pkg)) continue;
                 Drawable banner = ri.activityInfo.loadBanner(pm);
                 if (banner == null) banner = ri.activityInfo.applicationInfo.loadBanner(pm);
-                apps.add(new AppEntry(ri.loadLabel(pm).toString(), pkg, banner, ri.loadIcon(pm)));
+                apps.add(new AppEntry(ri.loadLabel(pm).toString(), pkg, null, banner, ri.loadIcon(pm)));
             }
         }
         Collections.sort(apps, (a, b) -> a.label.compareToIgnoreCase(b.label));
+        // HDMI inputs first, so they can be added to the dock like apps
+        List<TvInputInfo> inputs = hdmiInputs();
+        for (int i = inputs.size() - 1; i >= 0; i--) {
+            apps.add(0, new AppEntry(inputLabel(inputs.get(i)), null, inputs.get(i).getId(), null, null));
+        }
         appsIndex = 0;
         appsFirstRow = 0;
         appsOpen = true;
@@ -920,6 +997,16 @@ public class HomeView extends View {
     private Intent launchIntent(String pkg) {
         Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
         return i != null ? i : pm.getLaunchIntentForPackage(pkg);
+    }
+
+    /** Opens an app, or switches the TV to an HDMI input through its live TV app. */
+    private void open(String pkg, String inputId) {
+        if (inputId == null) {
+            launch(pkg);
+            return;
+        }
+        Intent i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(inputId));
+        if (!start(i)) Toast.makeText(getContext(), "Can't switch to this input", Toast.LENGTH_SHORT).show();
     }
 
     private void launch(String pkg) {
