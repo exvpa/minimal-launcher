@@ -61,7 +61,7 @@ public class HomeView extends View {
             "com.tcl.tv",
             "com.sony.dtv.tvx",
     };
-    private static final String[] TOP_BUTTONS = {"search", "store", "settings"};
+    private static final String[] TOP_BUTTONS = {"search", "store", "apps", "settings"};
     private static final int MAX_DOCK = 10;
 
     private static final long WALLPAPER_INTERVAL = 10 * 60 * 1000L;
@@ -123,7 +123,7 @@ public class HomeView extends View {
     private final Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
     private final Paint topScrim = new Paint(), bottomScrim = new Paint();
 
-    /** A dock entry. A null package is the Apps button, always last. */
+    /** A dock entry: an installed app. All apps lives in the top bar. */
     private static final class DockItem {
         final String label, pkg;
 
@@ -337,7 +337,7 @@ public class HomeView extends View {
         anim.start();
     }
 
-    /** The saved dock (or the default), installed apps only, plus the Apps entry. */
+    /** The saved dock (or the default), installed apps only. */
     private void loadDock() {
         if (editing) return;
         String saved = prefs.getString("packages", null);
@@ -347,8 +347,7 @@ public class HomeView extends View {
             if (pkg.isEmpty() || launchIntent(pkg) == null) continue;
             dock.add(new DockItem(label(pkg), pkg));
         }
-        dock.add(new DockItem("Apps", null));
-        dockIndex = Math.min(dockIndex, dock.size() - 1);
+        dockIndex = Math.max(0, Math.min(dockIndex, dock.size() - 1));
         focusX = dockIndex;
     }
 
@@ -368,7 +367,7 @@ public class HomeView extends View {
     }
 
     private int dockApps() {
-        return dock.size() - 1;
+        return dock.size();
     }
 
     // --- drawing
@@ -728,7 +727,7 @@ public class HomeView extends View {
             invalidate();
         } else if (appsOpen) {
             if (!apps.isEmpty()) addToDock(apps.get(appsIndex));
-        } else if (!editing && !topFocused && !newsFocused && dock.get(dockIndex).pkg != null) {
+        } else if (!editing && !topFocused && !newsFocused && !dock.isEmpty()) {
             editing = true;
             playSoundEffect(SoundEffectConstants.CLICK);
             invalidate();
@@ -782,7 +781,7 @@ public class HomeView extends View {
         }
     }
 
-    /** Swaps the focused app with its neighbour; the Apps button stays last. */
+    /** Swaps the focused app with its neighbour. */
     private void moveDockItem(int dir) {
         int to = dockIndex + dir;
         if (to < 0 || to >= dockApps()) return;
@@ -852,10 +851,12 @@ public class HomeView extends View {
             switch (TOP_BUTTONS[topIndex]) {
                 case "search": openSearch(); break;
                 case "store": launch("com.android.vending"); break;
+                case "apps": openApps(); break;
                 default: start(new Intent(Settings.ACTION_SETTINGS)); break;
             }
             return;
         }
+        if (dock.isEmpty()) return;
         String pkg = dock.get(dockIndex).pkg;
         if (pkg == null) openApps();
         else launch(pkg);
