@@ -1,18 +1,19 @@
 # minimal-launcher
 
-A quiet home screen for Google TV / Android TV: a photo, the time, the weather and your apps on a frosted-glass dock, built for the remote. Inspired by [CleanFrame](https://github.com/nthnclrk/CleanFrame) (Samsung Tizen), rewritten for Android TV.
+A quiet home screen for Google TV / Android TV in a macOS-inspired style: a photo, the time, the weather and your apps on a clear frosted-glass dock that magnifies the focused app, built for the remote. Inspired by [CleanFrame](https://github.com/nthnclrk/CleanFrame) (Samsung Tizen), rewritten for Android TV.
 
 ![Home screen](docs/screenshot.png)
 
 ## Features
 
 - **Dynamic wallpaper**: landscape photos from Bing's daily image archive, changing every 10 minutes with a slow crossfade. Cached on the TV, so it still works offline.
+- **Typeface**: [Inter](https://rsms.me/inter/) (SIL OFL, `frame/fonts/`), the open font closest to SF Pro.
 - **Top left**: clock, date and current weather for the TV's location ([Open-Meteo](https://open-meteo.com), no API key). The location comes from Android's location services (Wi-Fi based on a TV, coarse permission only); without it, Bucharest is used.
 - **Top right**: Google search (voice or keyboard), Play Store, All apps, TV settings.
 - **Dock** you edit with the remote (up to 10 apps), plus an **Apps** panel with everything installed (top-bar button or the remote's Menu key). Starts with YouTube, Netflix, Apple TV, Disney+, Plex, HBO Max, SkyShowtime and live TV.
-- **News panel** above the dock: Google News headlines for the country the TV is in, rotating every 15 s. Press ▲ to select it, ◀ ▶ to browse, OK to open the article. Hold OK on ⚙ for settings (on/off, topic).
+- **News** under the weather, as plain text: Google News headlines for the country the TV is in, rotating every 15 s. Press ▲ from the dock to select it, ◀ ▶ to browse, OK to open the article. Hold OK on ⚙ for settings (on/off, topic).
 - **HDMI inputs** in the dock: they head the Apps panel (hold OK to add); in edit mode ▲ picks an icon (HDMI, PlayStation, Xbox, Switch).
-- **Icon library** of sketch-style logos for 30 popular apps, in white (minimal) or color: switch under Frame settings → Icon style, matched by package name; apps without one show their name as a bold wordmark.
+- **Icon library** of sketch-style logos for 30 popular apps, in macOS style (default, `frame/icons-mac/`), white (minimal) or color: switch under Frame settings → Icon style, matched by package name; apps without one show their name as a bold wordmark.
 - Frosted glass rendered from a pre-blurred copy of the wallpaper, so it stays smooth on TV hardware.
 - No ads, no recommendations, no accounts. Framework-only Java: no AndroidX, no Gradle.
 

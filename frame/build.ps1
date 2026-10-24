@@ -21,8 +21,8 @@ New-Item -ItemType Directory -Force "$out\classes", "$out\dex" | Out-Null
 
 function Check([string]$step) { if ($LASTEXITCODE -ne 0) { throw "$step failed" } }
 
-# Icon libraries: the source PNGs in icons\ (white) and icons-color\ are large, so ship 256px copies in assets\
-$iconSets = 'icons', 'icons-color'
+# Icon libraries: the source PNGs in icons\ (white), icons-color\ and icons-mac\ are large, so ship 256px copies in assets\
+$iconSets = 'icons', 'icons-color', 'icons-mac'
 Add-Type -AssemblyName System.Drawing
 foreach ($set in $iconSets) {
 New-Item -ItemType Directory -Force "$out\assets\$set" | Out-Null
@@ -57,6 +57,8 @@ Check 'd8'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open("$out\base.apk", 'Update')
 [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$out\dex\classes.dex", 'classes.dex') | Out-Null
+# Inter (SIL Open Font License, see fonts\OFL.txt), the open font closest to SF Pro
+[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$root\fonts\Inter.ttf", 'assets/fonts/Inter.ttf') | Out-Null
 foreach ($set in $iconSets) {
     foreach ($icon in Get-ChildItem "$out\assets\$set" -Filter *.png) {
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $icon.FullName, "assets/$set/$($icon.Name)") | Out-Null

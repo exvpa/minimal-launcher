@@ -38,12 +38,16 @@ final class Glyphs {
      * Icon library: "<id>.png", where id is an app's package name (or "apps"). Looked up first in the
      * TV folder (Android/data/com.frame.home/files/icons, filled with adb push), then in the bundled
      * assets/icons/. Loaded on first use and cropped to their visible pixels.
-     * In color mode, icons-color/ (TV folder, then assets) comes first.
+     * The icon style picks which sets are searched first: macOS (icons-mac, then color),
+     * White (icons) or Color (icons-color). Each set: TV folder, then assets.
      */
     private static final Map<String, Bitmap> images = new HashMap<>();
     private static final Set<String> missing = new HashSet<>();
-    private static final Set<String> colored = new HashSet<>();   // ids whose loaded image is the color version
-    private static boolean colorMode;
+    private static final Set<String> natural = new HashSet<>();   // ids drawn in their own colors, not tinted
+    static final int STYLE_MAC = 0, STYLE_WHITE = 1, STYLE_COLOR = 2;
+    private static final String[][] STYLE_SETS = {
+            {"icons-mac", "icons-color", "icons"}, {"icons"}, {"icons-color", "icons"}};
+    private static int style = STYLE_MAC;
     private static final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private static AssetManager assets;
     private static File folder;
@@ -55,18 +59,22 @@ final class Glyphs {
         folder = context.getExternalFilesDir(null);
     }
 
-    /** White (minimal) or color logos; switching reloads the icons. */
-    static void setColorMode(boolean color) {
-        if (color == colorMode) return;
-        colorMode = color;
+    /** macOS tiles, white (minimal) or color logos; switching reloads the icons. */
+    static void setStyle(int s) {
+        if (s == style) return;
+        style = s;
         reload();
+    }
+
+    static int style() {
+        return style;
     }
 
     /** Forgets loaded icons, so files newly added to the TV folder show up. */
     static void reload() {
         images.clear();
         missing.clear();
-        colored.clear();
+        natural.clear();
     }
 
     static boolean hasImage(String id) {
@@ -84,12 +92,14 @@ final class Glyphs {
 
     private static Bitmap decode(String id) {
         Bitmap raw = null;
-        if (colorMode) {
-            raw = load("icons-color", id);
-            if (raw != null) colored.add(id);
+        // Later sets are fallbacks for logos missing from the preferred one
+        for (String set : STYLE_SETS[style]) {
+            raw = load(set, id);
+            if (raw != null) {
+                if (!set.equals("icons")) natural.add(id);
+                break;
+            }
         }
-        // White set, also the fallback for logos missing from the color set
-        if (raw == null) raw = load("icons", id);
         if (raw == null) return null;
         Rect b = visibleBounds(raw);
         // The dock draws logos at about 60px high
@@ -142,9 +152,27 @@ final class Glyphs {
             h *= size * 2.6f / w;
             w = size * 2.6f;
         }
+        imagePaint.setColorFilter(filter(id, color));
+        c.drawBitmap(bmp, null, new RectF(centerX - w / 2, centerY - h / 2, centerX + w / 2, centerY + h / 2), imagePaint);
+        return true;
+    }
+
+    /** Draws an icon fitted inside box (keeping its shape), as the macOS dock does. */
+    static boolean drawFit(Canvas c, String id, RectF box, int color) {
+        Bitmap bmp = image(id);
+        if (bmp == null) return false;
+        float s = Math.min(box.width() / bmp.getWidth(), box.height() / bmp.getHeight());
+        float w = bmp.getWidth() * s, h = bmp.getHeight() * s;
+        imagePaint.setColorFilter(filter(id, color));
+        c.drawBitmap(bmp, null, new RectF(box.centerX() - w / 2, box.bottom - h, box.centerX() + w / 2, box.bottom), imagePaint);
+        return true;
+    }
+
+    /** Natural-color icons only fade with the color's alpha; white ones take the color. */
+    private static ColorMatrixColorFilter filter(String id, int color) {
         float r = Color.red(color) / 255f, g = Color.green(color) / 255f, b = Color.blue(color) / 255f, a = Color.alpha(color) / 255f;
         // Slight contrast on alpha: fades the faint smudges left from background removal
-        imagePaint.setColorFilter(new ColorMatrixColorFilter(colored.contains(id) ? new float[]{
+        return new ColorMatrixColorFilter(natural.contains(id) ? new float[]{
                 1, 0, 0, 0, 0,
                 0, 1, 0, 0, 0,
                 0, 0, 1, 0, 0,
@@ -154,9 +182,7 @@ final class Glyphs {
                 0, 0, 0, 0, g * 255,
                 0, 0, 0, 0, b * 255,
                 0, 0, 0, 1.2f * a, -25f * a,
-        }));
-        c.drawBitmap(bmp, null, new RectF(centerX - w / 2, centerY - h / 2, centerX + w / 2, centerY + h / 2), imagePaint);
-        return true;
+        });
     }
 
     static void draw(Canvas c, String id, float centerX, float centerY, float size, int color) {
@@ -179,6 +205,10 @@ final class Glyphs {
             case "tv": tv(c); break;
             case "apps": apps(c); break;
             case "search": search(c); break;
+            case "sf.search": sfSearch(c); break;
+            case "sf.store": sfStore(c); break;
+            case "sf.apps": sfApps(c); break;
+            case "sf.settings": settings(c); break;
             case "store": store(c); break;
             case "settings": settings(c); break;
             case "clear-day": sun(c, 0, 0, 1f); break;
@@ -326,6 +356,26 @@ final class Glyphs {
         }
         paint.setColor(color);
         paint.setStyle(Paint.Style.FILL);
+    }
+
+    // --- macOS top bar: SF Symbols-like, drawn as vectors so they stay sharp at any size
+
+    private static void sfSearch(Canvas c) {
+        stroke(0.15f);
+        c.drawCircle(x(-0.16f), y(-0.16f), 0.56f * u, paint);
+        stroke(0.18f);
+        c.drawLine(x(0.26f), y(0.26f), x(0.8f), y(0.8f), paint);
+    }
+
+    private static void sfStore(Canvas c) {
+        stroke(0.15f);
+        c.drawPath(poly(-0.48f, -0.8f, 0.82f, 0f, -0.48f, 0.8f), paint);
+    }
+
+    private static void sfApps(Canvas c) {
+        float r = 0.17f * u;
+        float[] o = {-0.86f, 0.1f};
+        for (float ox : o) for (float oy : o) c.drawRoundRect(rect(ox, oy, ox + 0.76f, oy + 0.76f), r, r, paint);
     }
 
     private static void search(Canvas c) {

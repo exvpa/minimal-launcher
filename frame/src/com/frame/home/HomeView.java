@@ -74,9 +74,11 @@ public class HomeView extends View {
 
     // Design canvas and layout, in 1920x1080 pixels
     private static final float W = 1920f, H = 1080f, MARGIN = 96f;
-    private static final float ITEM_W = 190f, DOCK_MAX_W = 1720f, DOCK_H = 190f, DOCK_PAD = 14f, DOCK_BOTTOM = 76f;
+    // macOS-style dock: icons only, the focused one magnified (MAG) with neighbours easing off (SPREAD)
+    private static final float ICON = 92f, SLOT = 112f, DOCK_MAX_W = 1720f, DOCK_H = 124f, DOCK_PAD = 16f, DOCK_BOTTOM = 64f;
+    private static final float MAG = 0.6f, SPREAD = 1.05f;
     private static final float BTN = 64f, BTN_GAP = 10f, BTN_PAD = 8f, TOP_Y = 70f;
-    private static final float NEWS_W = W / 3, NEWS_PAD = 26f, NEWS_GAP = 18f;
+    private static final float NEWS_W = W / 3, NEWS_TOP = 290f;   // headline starts just under the weather line
     private static final int APP_COLS = 6, APP_ROWS = 3;
     private static final RectF SCREEN = new RectF(0, 0, W, H);
 
@@ -106,8 +108,6 @@ public class HomeView extends View {
     private float headlineAlpha = 1f;
     private boolean newsFocused;
     private StaticLayout headlineLayout;
-    private float newsH;                 // animated panel height; the panel grows upward from the dock
-    private ValueAnimator newsHAnim;
     private final TextPaint headlinePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean settingsOpen;
@@ -122,9 +122,7 @@ public class HomeView extends View {
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Path clip = new Path();
-    private final Typeface light = Typeface.create("sans-serif-light", Typeface.NORMAL);
-    private final Typeface regular = Typeface.create("sans-serif", Typeface.NORMAL);
-    private final Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    private final Typeface light, regular, medium;
     private final Paint topScrim = new Paint(), bottomScrim = new Paint();
 
     /** A dock entry: an installed app. All apps lives in the top bar. */
@@ -164,7 +162,7 @@ public class HomeView extends View {
 
     private static final String INPUT_PREFIX = "input:";
     /** Icons an input can cycle through in edit mode (frame/icons/input.*.png). */
-    private static final String[] INPUT_ICONS = {"input.hdmi", "input.playstation", "input.xbox", "input.switch"};
+    private static final String[] INPUT_ICONS = {"input.hdmi", "input.playstation", "input.xbox", "input.switch", "input.pc"};
 
     /** The TV's physical HDMI ports (not CEC devices behind them), in port order, hidden ones skipped. */
     private List<TvInputInfo> hdmiInputs() {
@@ -212,8 +210,11 @@ public class HomeView extends View {
         prefs = context.getSharedPreferences("dock", Context.MODE_PRIVATE);
         wallpapers = new Wallpapers(context);
         weather = new Weather(context);
+        light = inter(context, "'wght' 300, 'opsz' 32", "sans-serif-light");
+        regular = inter(context, "'wght' 400", "sans-serif");
+        medium = inter(context, "'wght' 560", "sans-serif-medium");
         Glyphs.init(context);
-        Glyphs.setColorMode(colorIcons());
+        Glyphs.setStyle(iconStyle());
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(1.5f);
         topScrim.setShader(new RadialGradient(0, 0, 1100, 0x8C000000, 0x00000000, Shader.TileMode.CLAMP));
@@ -302,7 +303,7 @@ public class HomeView extends View {
             newsCountry = News.country();
             news.fetch(News.TOPICS[newsTopic()], items -> {
                 headlines = items;
-                showHeadline(0, false);
+                showHeadline(0);
             });
             handler.postDelayed(this, NEWS_INTERVAL);
         }
@@ -328,7 +329,7 @@ public class HomeView extends View {
             float t = (float) a.getAnimatedValue();
             if (t >= 1f && !swapped[0]) {
                 swapped[0] = true;
-                showHeadline(next, true);
+                showHeadline(next);
             }
             headlineAlpha = Math.abs(1f - t);
             invalidate();
@@ -337,30 +338,18 @@ public class HomeView extends View {
         if (newsFocused) playSoundEffect(SoundEffectConstants.CLICK);
     }
 
-    private void showHeadline(int index, boolean animate) {
+    private void showHeadline(int index) {
         if (headlines.isEmpty()) return;
         headlineIndex = index % headlines.size();
         News.Item item = headlines.get(headlineIndex);
         headlinePaint.setTypeface(medium);
-        headlinePaint.setTextSize(28);
+        headlinePaint.setTextSize(26);
         headlinePaint.setColor(0xFFFFFFFF);
-        int width = (int) (NEWS_W - NEWS_PAD * 2);
+        headlinePaint.setShadowLayer(10f, 0f, 1f, 0x59000000);
+        int width = (int) NEWS_W;
         headlineLayout = StaticLayout.Builder.obtain(item.title, 0, item.title.length(), headlinePaint, width)
                 .setMaxLines(5).setEllipsize(TextUtils.TruncateAt.END).setLineSpacing(4f, 1f).build();
-        float target = NEWS_PAD + headlineLayout.getHeight() + 14 + 26 + NEWS_PAD;
-        if (newsHAnim != null) newsHAnim.cancel();
-        if (!animate || newsH == 0) {
-            newsH = target;
-            invalidate();
-            return;
-        }
-        newsHAnim = ValueAnimator.ofFloat(newsH, target).setDuration(260);
-        newsHAnim.setInterpolator(new DecelerateInterpolator());
-        newsHAnim.addUpdateListener(a -> {
-            newsH = (float) a.getAnimatedValue();
-            invalidate();
-        });
-        newsHAnim.start();
+        invalidate();
     }
 
     private boolean newsVisible() {
@@ -374,8 +363,22 @@ public class HomeView extends View {
         }
     }
 
-    private boolean colorIcons() {
-        return prefs.getBoolean("colorIcons", false);
+    private static final String[] ICON_STYLES = {"macOS", "White", "Color"};
+
+    private int iconStyle() {
+        return Math.min(prefs.getInt("iconStyle", Glyphs.STYLE_MAC), ICON_STYLES.length - 1);
+    }
+
+    /** Inter, the open font closest to SF Pro (which can't be bundled outside Apple platforms). */
+    private static Typeface inter(Context context, String variation, String fallback) {
+        try {
+            Typeface tf = new Typeface.Builder(context.getAssets(), "fonts/Inter.ttf")
+                    .setFontVariationSettings(variation).build();
+            if (tf != null) return tf;
+        } catch (RuntimeException ignored) {
+            // Font missing from the APK
+        }
+        return Typeface.create(fallback, Typeface.NORMAL);
     }
 
     private boolean newsEnabled() {
@@ -487,12 +490,13 @@ public class HomeView extends View {
             if (previous != null) drawLayer(c, previous.blur, null, 255);
             drawLayer(c, current.blur, null, (int) (255 * fade));
         }
-        fill.setColor(0x47000000);
+        // As clear as possible while staying readable, like macOS vibrancy
+        fill.setColor(0x08000000);
         c.drawRect(r, fill);
-        fill.setColor(0x12FFFFFF);
+        fill.setColor(0x14FFFFFF);
         c.drawRect(r, fill);
         c.restore();
-        line.setColor(0x2EFFFFFF);
+        line.setColor(0x40FFFFFF);
         c.drawRoundRect(r, radius, radius, line);
     }
 
@@ -500,12 +504,12 @@ public class HomeView extends View {
         Date now = new Date();
         String pattern = DateFormat.is24HourFormat(getContext()) ? "HH:mm" : "h:mm";
         text.setShadowLayer(18f, 0f, 2f, 0x66000000);
-        drawText(c, new SimpleDateFormat(pattern, Locale.ENGLISH).format(now), MARGIN - 6, 178, 120, light, 0xFFFFFFFF, Paint.Align.LEFT);
-        drawText(c, new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now), MARGIN, 236, 34, regular, 0xF0FFFFFF, Paint.Align.LEFT);
+        drawText(c, new SimpleDateFormat(pattern, Locale.ENGLISH).format(now), MARGIN - 5, 160, 90, light, 0xFFFFFFFF, Paint.Align.LEFT);
+        drawText(c, new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now), MARGIN, 204, 26, regular, 0xF0FFFFFF, Paint.Align.LEFT);
         if (report != null) {
-            Glyphs.draw(c, report.icon, MARGIN + 20, 284, 38, 0xF0FFFFFF);
+            Glyphs.draw(c, report.icon, MARGIN + 15, 240, 28, 0xF0FFFFFF);
             String weatherText = report.temperature + "°" + (report.place.isEmpty() ? "" : "  " + report.place);
-            drawText(c, weatherText, MARGIN + 54, 297, 30, regular, 0xE6FFFFFF, Paint.Align.LEFT);
+            drawText(c, weatherText, MARGIN + 40, 249, 23, regular, 0xE6FFFFFF, Paint.Align.LEFT);
         }
         text.clearShadowLayer();
     }
@@ -522,6 +526,15 @@ public class HomeView extends View {
             float cx = pill.left + BTN_PAD + BTN / 2 + i * (BTN + BTN_GAP);
             float cy = pill.centerY();
             boolean focused = topFocused && i == topIndex && !appsOpen;
+            if (iconStyle() == Glyphs.STYLE_MAC) {
+                // Vector SF Symbols-style glyphs: crisp at any size; focus is a white disc with a dark glyph
+                if (focused) {
+                    fill.setColor(0xEBFFFFFF);
+                    c.drawCircle(cx, cy, BTN / 2, fill);
+                }
+                Glyphs.draw(c, "sf." + TOP_BUTTONS[i], cx, cy, 30, focused ? 0xFF1D1D1F : 0xF2FFFFFF);
+                continue;
+            }
             if (focused) {
                 fill.setColor(0xF2FFFFFF);
                 c.drawCircle(cx, cy, BTN / 2, fill);
@@ -530,86 +543,93 @@ public class HomeView extends View {
         }
     }
 
-    /** Item width shrinks when a full dock would not fit the screen. */
-    private float itemW() {
-        return Math.min(ITEM_W, (DOCK_MAX_W - DOCK_PAD * 2) / dock.size());
+    /** Slot width at rest; shrinks when a full dock would not fit the screen. */
+    private float slotW() {
+        return Math.min(SLOT, (DOCK_MAX_W - DOCK_PAD * 2) / Math.max(1, dock.size()));
     }
 
+    /** Magnification of item i: a bell curve around the (animated) focus, as on the macOS dock. */
+    private float scaleAt(int i) {
+        if (topFocused || newsFocused || appsOpen || settingsOpen) return 1f;
+        float d = i - focusX;
+        return 1f + MAG * (float) Math.exp(-(d * d) / (2 * SPREAD * SPREAD));
+    }
+
+    /** The dock at rest: what the news panel lines up with, so it doesn't move with the magnify. */
     private RectF dockRect() {
-        float w = dock.size() * itemW() + DOCK_PAD * 2;
+        float w = dock.size() * slotW() + DOCK_PAD * 2;
         float left = (W - w) / 2, top = H - DOCK_BOTTOM - DOCK_H;
         return new RectF(left, top, left + w, top + DOCK_H);
     }
 
     private void drawDock(Canvas c) {
-        RectF r = dockRect();
-        float itemW = itemW();
-        glass(c, r, 44);
-        if (!topFocused && !newsFocused && !appsOpen) {
-            float x = r.left + DOCK_PAD + focusX * itemW;
-            RectF tile = new RectF(x + 4, r.top + DOCK_PAD, x + itemW - 4, r.bottom - DOCK_PAD);
-            fill.setColor(editing ? 0x52FFFFFF : 0x38FFFFFF);
-            c.drawRoundRect(tile, 32, 32, fill);
-            if (editing) {
-                line.setColor(0xCCFFFFFF);
-                line.setStrokeWidth(3f);
-                c.drawRoundRect(tile, 32, 32, line);
-                line.setStrokeWidth(1.5f);
-                text.setShadowLayer(12f, 0f, 2f, 0x80000000);
-                String hint = dock.get(dockIndex).inputId != null
-                        ? "◀ ▶  Move      ▲  Icon      ▼  Remove      OK  Done"
-                        : "◀ ▶  Move      ▼  Remove      OK  Done";
-                drawText(c, hint, W / 2, r.top - 28, 26, medium, 0xF2FFFFFF, Paint.Align.CENTER);
-                text.clearShadowLayer();
-            }
+        RectF rest = dockRect();
+        float slot = slotW(), icon = ICON * slot / SLOT;
+        // Magnified items take more room; the dock widens around its centre
+        float[] scale = new float[dock.size()];
+        float width = DOCK_PAD * 2;
+        for (int i = 0; i < dock.size(); i++) {
+            scale[i] = scaleAt(i);
+            width += slot * scale[i];
         }
+        RectF r = new RectF((W - width) / 2, rest.top, (W + width) / 2, rest.bottom);
+        glass(c, r, 36);
+        float x = r.left + DOCK_PAD, base = r.bottom - DOCK_PAD;
+        boolean dockFocused = !topFocused && !newsFocused && !appsOpen;
         for (int i = 0; i < dock.size(); i++) {
             DockItem item = dock.get(i);
-            float cx = r.left + DOCK_PAD + i * itemW + itemW / 2;
-            boolean focused = !topFocused && !newsFocused && !appsOpen && i == dockIndex;
-            int color = focused ? 0xFFFFFFFF : 0xD9FFFFFF;
-            float lift = focused && editing ? -8 : 0;
-            if (Glyphs.hasImage(iconId(item))) {
-                Glyphs.draw(c, iconId(item), cx, r.top + 78 + lift, 56, color);
-            } else {
-                wordmark(c, item.label, cx, r.top + 78 + lift, itemW - 36, color);
-            }
-            text.setTextSize(26);
-            String label = TextUtils.ellipsize(item.label, text, itemW - 16, TextUtils.TruncateAt.END).toString();
-            drawText(c, label, cx, r.top + 152, 26, focused ? medium : regular, color, Paint.Align.CENTER);
+            float w = slot * scale[i], size = icon * scale[i], cx = x + w / 2;
+            boolean focused = dockFocused && i == dockIndex;
+            float lift = focused && editing ? 14 : 0;
+            int alpha = editing && !focused ? 0x80 : 0xFF;
+            RectF box = new RectF(cx - size / 2, base - size - lift, cx + size / 2, base - lift);
+            if (!Glyphs.drawFit(c, iconId(item), box, (alpha << 24) | 0xFFFFFF)) tile(c, item.label, box, alpha);
+            x += w;
+        }
+        if (editing && dockFocused) {
+            text.setShadowLayer(12f, 0f, 2f, 0x80000000);
+            String hint = dock.get(dockIndex).inputId != null
+                    ? "◀ ▶  Move      ▲  Icon      ▼  Remove      OK  Done"
+                    : "◀ ▶  Move      ▼  Remove      OK  Done";
+            drawText(c, hint, W / 2, base - icon * (1 + MAG) - 40, 24, medium, 0xF2FFFFFF, Paint.Align.CENTER);
+            text.clearShadowLayer();
         }
     }
 
+    /** Stand-in for apps without a library icon: a frosted tile with the app's initial. */
+    private void tile(Canvas c, String label, RectF box, int alpha) {
+        float radius = box.width() * 0.23f;
+        fill.setColor((alpha * 0x40 / 0xFF) << 24 | 0xFFFFFF);
+        c.drawRoundRect(box, radius, radius, fill);
+        String initial = label.isEmpty() ? "?" : label.substring(0, 1).toUpperCase(Locale.ROOT);
+        drawText(c, initial, box.centerX(), box.centerY() + box.height() * 0.17f, box.height() * 0.48f, medium,
+                (alpha << 24) | 0xFFFFFF, Paint.Align.CENTER);
+    }
+
     /**
-     * Glass panel a third of the screen wide, sitting on the dock's left edge. Its bottom is pinned
-     * above the dock; longer headlines make it taller upward only.
+     * Headline as plain text under the weather, a third of the screen wide. Its top is fixed just
+     * below the weather line, so longer headlines only grow downward.
      */
     private void drawHeadline(Canvas c) {
         if (!newsVisible() || editing || appsOpen || settingsOpen) return;
         News.Item item = headlines.get(headlineIndex);
-        RectF dock = dockRect();
-        RectF r = new RectF(dock.left, dock.top - NEWS_GAP - newsH, dock.left + NEWS_W, dock.top - NEWS_GAP);
-        glass(c, r, 32);
-        if (newsFocused) {
-            fill.setColor(0x24FFFFFF);
-            c.drawRoundRect(r, 32, 32, fill);
-            line.setColor(0xB3FFFFFF);
-            line.setStrokeWidth(2.5f);
-            c.drawRoundRect(r, 32, 32, line);
-            line.setStrokeWidth(1.5f);
-        }
-        // Text stays anchored to the bottom while the height animates
-        float textTop = r.bottom - NEWS_PAD - 26 - 14 - headlineLayout.getHeight();
-        headlinePaint.setAlpha((int) (headlineAlpha * 0xF0));
+        float top = NEWS_TOP, x = MARGIN;
+        headlinePaint.setAlpha((int) (headlineAlpha * 0xF2));
         c.save();
-        c.clipRect(r);
-        c.translate(r.left + NEWS_PAD, textTop);
+        c.translate(x, top);
         headlineLayout.draw(c);
         c.restore();
+        float metaY = top + headlineLayout.getHeight() + 28;
         String meta = item.source + (item.time > 0 ? " · " + age(item.time) : "")
                 + (newsFocused ? "     ◀ ▶  more   ·   OK  read" : "");
-        drawText(c, meta, r.left + NEWS_PAD, r.bottom - NEWS_PAD - 4, 22, regular,
-                ((int) (headlineAlpha * 0xA6) << 24) | 0xFFFFFF, Paint.Align.LEFT);
+        text.setShadowLayer(10f, 0f, 1f, 0x59000000);
+        drawText(c, meta, x, metaY, 21, regular, ((int) (headlineAlpha * 0xB3) << 24) | 0xFFFFFF, Paint.Align.LEFT);
+        text.clearShadowLayer();
+        if (newsFocused) {
+            // No box to highlight: a slim accent bar beside the selected headline
+            fill.setColor(0xF2FFFFFF);
+            c.drawRoundRect(new RectF(x - 22, top + 4, x - 17, metaY + 6), 3, 3, fill);
+        }
     }
 
     private static String age(long time) {
@@ -626,7 +646,7 @@ public class HomeView extends View {
         glass(c, p, 44);
         drawText(c, "Frame settings", p.left + 56, p.top + 84, 38, medium, 0xFFFFFFFF, Paint.Align.LEFT);
         String[] labels = {"News headlines", "News topic", "Icon style"};
-        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], colorIcons() ? "Color" : "White"};
+        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], ICON_STYLES[iconStyle()]};
         for (int i = 0; i < labels.length; i++) {
             RectF row = new RectF(p.left + 32, p.top + 130 + i * 96, p.right - 32, p.top + 210 + i * 96);
             boolean focused = i == settingsRow;
@@ -642,18 +662,6 @@ public class HomeView extends View {
         String country = new Locale("", News.country()).getDisplayCountry(Locale.ENGLISH);
         String source = (Weather.country != null ? "Location: " : "TV region: ") + country;
         drawText(c, "News from Google News · " + source, p.left + 60, p.bottom - 40, 24, regular, 0x99FFFFFF, Paint.Align.LEFT);
-    }
-
-    /** Stand-in logo for apps without a library icon: the name, bold, sized to the slot. */
-    private void wordmark(Canvas c, String label, float cx, float cy, float maxW, int color) {
-        text.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-        float size = 44;
-        text.setTextSize(size);
-        float w = text.measureText(label);
-        if (w > maxW) size = Math.max(22, size * maxW / w);
-        text.setTextSize(size);
-        String s = TextUtils.ellipsize(label, text, maxW, TextUtils.TruncateAt.END).toString();
-        drawText(c, s, cx, cy + size * 0.36f, size, text.getTypeface(), color, Paint.Align.CENTER);
     }
 
     private void drawApps(Canvas c) {
@@ -841,8 +849,9 @@ public class HomeView extends View {
             if (on) handler.post(newsTick);
             else headlines = new ArrayList<>();
         } else if (settingsRow == 2) {
-            prefs.edit().putBoolean("colorIcons", !colorIcons()).apply();
-            Glyphs.setColorMode(colorIcons());
+            int n = ICON_STYLES.length;
+            prefs.edit().putInt("iconStyle", (iconStyle() + dir + n) % n).apply();
+            Glyphs.setStyle(iconStyle());
         } else if (newsEnabled()) {
             int n = News.TOPICS.length;
             prefs.edit().putInt("newsTopic", (newsTopic() + dir + n) % n).apply();
