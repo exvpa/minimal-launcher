@@ -114,18 +114,40 @@ final class Weather {
                 if (found != null && !found.isEmpty()) {
                     Address a = found.get(0);
                     if (a.getCountryCode() != null) country = a.getCountryCode().toUpperCase(Locale.ROOT);
-                    name =a.getLocality() != null ? a.getLocality()
+                    name = a.getLocality() != null ? a.getLocality()
                             : a.getSubAdminArea() != null ? a.getSubAdminArea()
                             : a.getAdminArea() != null ? a.getAdminArea() : "";
                 }
             }
         } catch (Exception ignored) {
-            // No geocoder backend: show the temperature without a name
+            // No geocoder backend on this TV: try OpenStreetMap below
         }
-        placeLat = lat;
-        placeLon = lon;
-        placeName = name;
+        if (name.isEmpty()) name = osmPlaceName(lat, lon);
+        // Only remember a successful lookup, so a failed one is retried on the next refresh
+        if (!name.isEmpty()) {
+            placeLat = lat;
+            placeLon = lon;
+            placeName = name;
+        }
         return name;
+    }
+
+    /** Fallback reverse geocoding with OpenStreetMap Nominatim (free; one request per move, well under its limits). */
+    private static String osmPlaceName(double lat, double lon) {
+        try {
+            String url = String.format(Locale.US,
+                    "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&accept-language=en&lat=%.3f&lon=%.3f", lat, lon);
+            JSONObject address = new JSONObject(Http.get(url)).getJSONObject("address");
+            String cc = address.optString("country_code", "");
+            if (cc.length() == 2) country = cc.toUpperCase(Locale.ROOT);
+            for (String key : new String[]{"city", "town", "village", "municipality", "county", "state"}) {
+                String v = address.optString(key, "");
+                if (!v.isEmpty()) return v;
+            }
+        } catch (Exception ignored) {
+            // Offline or rate-limited: show the temperature without a name
+        }
+        return "";
     }
 
     /** Maps WMO weather codes to the glyph names in {@link Glyphs}. */

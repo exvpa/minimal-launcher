@@ -98,6 +98,7 @@ public class HomeView extends View {
 
     private final News news = new News();
     private List<News.Item> headlines = new ArrayList<>();
+    private String newsCountry;      // country the current headlines were fetched for
     private int headlineIndex;
     private float headlineAlpha = 1f;
     private boolean newsFocused;
@@ -227,6 +228,11 @@ public class HomeView extends View {
         public void run() {
             weather.fetch(r -> {
                 report = r;
+                // The location's country may only be known now: refresh news that used the fallback
+                if (newsEnabled() && !News.country().equals(newsCountry)) {
+                    handler.removeCallbacks(newsTick);
+                    handler.post(newsTick);
+                }
                 invalidate();
             });
             handler.postDelayed(this, WEATHER_INTERVAL);
@@ -236,6 +242,7 @@ public class HomeView extends View {
     private final Runnable newsTick = new Runnable() {
         @Override
         public void run() {
+            newsCountry = News.country();
             news.fetch(News.TOPICS[newsTopic()], items -> {
                 headlines = items;
                 showHeadline(0, false);
