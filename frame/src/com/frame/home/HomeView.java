@@ -213,6 +213,7 @@ public class HomeView extends View {
         wallpapers = new Wallpapers(context);
         weather = new Weather(context);
         Glyphs.init(context);
+        Glyphs.setColorMode(colorIcons());
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(1.5f);
         topScrim.setShader(new RadialGradient(0, 0, 1100, 0x8C000000, 0x00000000, Shader.TileMode.CLAMP));
@@ -371,6 +372,10 @@ public class HomeView extends View {
         if (link == null || !start(new Intent(Intent.ACTION_VIEW, Uri.parse(link)))) {
             Toast.makeText(getContext(), "No browser installed to open the article", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private boolean colorIcons() {
+        return prefs.getBoolean("colorIcons", false);
     }
 
     private boolean newsEnabled() {
@@ -617,11 +622,11 @@ public class HomeView extends View {
     private void drawSettings(Canvas c) {
         fill.setColor(0x99000000);
         c.drawRect(SCREEN, fill);
-        RectF p = new RectF(W / 2 - 420, H / 2 - 230, W / 2 + 420, H / 2 + 230);
+        RectF p = new RectF(W / 2 - 420, H / 2 - 270, W / 2 + 420, H / 2 + 270);
         glass(c, p, 44);
         drawText(c, "Frame settings", p.left + 56, p.top + 84, 38, medium, 0xFFFFFFFF, Paint.Align.LEFT);
-        String[] labels = {"News headlines", "News topic"};
-        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()]};
+        String[] labels = {"News headlines", "News topic", "Icon style"};
+        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], colorIcons() ? "Color" : "White"};
         for (int i = 0; i < labels.length; i++) {
             RectF row = new RectF(p.left + 32, p.top + 130 + i * 96, p.right - 32, p.top + 210 + i * 96);
             boolean focused = i == settingsRow;
@@ -815,7 +820,7 @@ public class HomeView extends View {
     private void settingsKey(int k) {
         switch (k) {
             case KeyEvent.KEYCODE_DPAD_UP: settingsRow = Math.max(0, settingsRow - 1); break;
-            case KeyEvent.KEYCODE_DPAD_DOWN: settingsRow = Math.min(1, settingsRow + 1); break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: settingsRow = Math.min(2, settingsRow + 1); break;
             case KeyEvent.KEYCODE_DPAD_LEFT: changeSetting(-1); return;
             case KeyEvent.KEYCODE_DPAD_RIGHT: changeSetting(1); return;
             case KeyEvent.KEYCODE_BACK:
@@ -835,6 +840,9 @@ public class HomeView extends View {
             handler.removeCallbacks(newsTick);
             if (on) handler.post(newsTick);
             else headlines = new ArrayList<>();
+        } else if (settingsRow == 2) {
+            prefs.edit().putBoolean("colorIcons", !colorIcons()).apply();
+            Glyphs.setColorMode(colorIcons());
         } else if (newsEnabled()) {
             int n = News.TOPICS.length;
             prefs.edit().putInt("newsTopic", (newsTopic() + dir + n) % n).apply();

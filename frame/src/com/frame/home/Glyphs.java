@@ -38,9 +38,12 @@ final class Glyphs {
      * Icon library: "<id>.png", where id is an app's package name (or "apps"). Looked up first in the
      * TV folder (Android/data/com.frame.home/files/icons, filled with adb push), then in the bundled
      * assets/icons/. Loaded on first use and cropped to their visible pixels.
+     * In color mode, icons-color/ (TV folder, then assets) comes first.
      */
     private static final Map<String, Bitmap> images = new HashMap<>();
     private static final Set<String> missing = new HashSet<>();
+    private static final Set<String> colored = new HashSet<>();   // ids whose loaded image is the color version
+    private static boolean colorMode;
     private static final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private static AssetManager assets;
     private static File folder;
@@ -49,13 +52,21 @@ final class Glyphs {
 
     static void init(Context context) {
         assets = context.getAssets();
-        folder = context.getExternalFilesDir("icons");
+        folder = context.getExternalFilesDir(null);
+    }
+
+    /** White (minimal) or color logos; switching reloads the icons. */
+    static void setColorMode(boolean color) {
+        if (color == colorMode) return;
+        colorMode = color;
+        reload();
     }
 
     /** Forgets loaded icons, so files newly added to the TV folder show up. */
     static void reload() {
         images.clear();
         missing.clear();
+        colored.clear();
     }
 
     static boolean hasImage(String id) {
@@ -73,15 +84,12 @@ final class Glyphs {
 
     private static Bitmap decode(String id) {
         Bitmap raw = null;
-        File file = folder == null ? null : new File(folder, id + ".png");
-        if (file != null && file.isFile()) raw = BitmapFactory.decodeFile(file.getPath());
-        if (raw == null && assets != null) {
-            try (InputStream in = assets.open("icons/" + id + ".png")) {
-                raw = BitmapFactory.decodeStream(in);
-            } catch (IOException ignored) {
-                // Not in the library
-            }
+        if (colorMode) {
+            raw = load("icons-color", id);
+            if (raw != null) colored.add(id);
         }
+        // White set, also the fallback for logos missing from the color set
+        if (raw == null) raw = load("icons", id);
         if (raw == null) return null;
         Rect b = visibleBounds(raw);
         // The dock draws logos at about 60px high
@@ -89,6 +97,21 @@ final class Glyphs {
         Bitmap cropped = Bitmap.createBitmap(raw, b.left, b.top, b.width(), b.height());
         return Bitmap.createScaledBitmap(cropped,
                 Math.max(1, Math.round(b.width() * scale)), Math.max(1, Math.round(b.height() * scale)), true);
+    }
+
+    /** TV folder first (adb push), then the bundled assets. */
+    private static Bitmap load(String set, String id) {
+        File file = folder == null ? null : new File(new File(folder, set), id + ".png");
+        if (file != null && file.isFile()) {
+            Bitmap bmp = BitmapFactory.decodeFile(file.getPath());
+            if (bmp != null) return bmp;
+        }
+        if (assets == null) return null;
+        try (InputStream in = assets.open(set + "/" + id + ".png")) {
+            return BitmapFactory.decodeStream(in);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private static Rect visibleBounds(Bitmap bmp) {
@@ -109,7 +132,7 @@ final class Glyphs {
         return r < 0 ? new Rect(0, 0, w, h) : new Rect(l, t, r + 1, b + 1);
     }
 
-    /** Draws a logo image recoloured to the glyph colour. */
+    /** Draws a logo image: white ones recoloured to the glyph colour, color ones only faded by its alpha. */
     private static boolean drawImage(Canvas c, String id, float centerX, float centerY, float size, int color) {
         Bitmap bmp = image(id);
         if (bmp == null) return false;
@@ -120,11 +143,16 @@ final class Glyphs {
             w = size * 2.6f;
         }
         float r = Color.red(color) / 255f, g = Color.green(color) / 255f, b = Color.blue(color) / 255f, a = Color.alpha(color) / 255f;
-        imagePaint.setColorFilter(new ColorMatrixColorFilter(new float[]{
+        // Slight contrast on alpha: fades the faint smudges left from background removal
+        imagePaint.setColorFilter(new ColorMatrixColorFilter(colored.contains(id) ? new float[]{
+                1, 0, 0, 0, 0,
+                0, 1, 0, 0, 0,
+                0, 0, 1, 0, 0,
+                0, 0, 0, 1.2f * a, -25f * a,
+        } : new float[]{
                 0, 0, 0, 0, r * 255,
                 0, 0, 0, 0, g * 255,
                 0, 0, 0, 0, b * 255,
-                // Slight contrast on alpha: fades the faint smudges left from background removal
                 0, 0, 0, 1.2f * a, -25f * a,
         }));
         c.drawBitmap(bmp, null, new RectF(centerX - w / 2, centerY - h / 2, centerX + w / 2, centerY + h / 2), imagePaint);

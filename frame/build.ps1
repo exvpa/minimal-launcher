@@ -21,10 +21,12 @@ New-Item -ItemType Directory -Force "$out\classes", "$out\dex" | Out-Null
 
 function Check([string]$step) { if ($LASTEXITCODE -ne 0) { throw "$step failed" } }
 
-# Icon library: the source PNGs in icons\ are large, so ship 256px copies in assets\icons\
-New-Item -ItemType Directory -Force "$out\assets\icons" | Out-Null
+# Icon libraries: the source PNGs in icons\ (white) and icons-color\ are large, so ship 256px copies in assets\
+$iconSets = 'icons', 'icons-color'
 Add-Type -AssemblyName System.Drawing
-foreach ($file in Get-ChildItem "$root\icons" -Filter *.png) {
+foreach ($set in $iconSets) {
+New-Item -ItemType Directory -Force "$out\assets\$set" | Out-Null
+foreach ($file in Get-ChildItem "$root\$set" -Filter *.png) {
     $src = [System.Drawing.Image]::FromFile($file.FullName)
     $scale = [Math]::Min(1.0, 256.0 / [Math]::Max($src.Width, $src.Height))
     $w = [int][Math]::Round($src.Width * $scale); $h = [int][Math]::Round($src.Height * $scale)
@@ -33,8 +35,9 @@ foreach ($file in Get-ChildItem "$root\icons" -Filter *.png) {
     $g.InterpolationMode = 'HighQualityBicubic'; $g.PixelOffsetMode = 'HighQuality'; $g.CompositingMode = 'SourceCopy'
     $g.DrawImage($src, 0, 0, $w, $h)
     $g.Dispose(); $src.Dispose()
-    $dst.Save("$out\assets\icons\$($file.Name)", [System.Drawing.Imaging.ImageFormat]::Png)
+    $dst.Save("$out\assets\$set\$($file.Name)", [System.Drawing.Imaging.ImageFormat]::Png)
     $dst.Dispose()
+}
 }
 
 # Assets are zipped in below: aapt2 -A on Windows stores "assets/icons\x.png" paths that Android can't open
@@ -54,8 +57,10 @@ Check 'd8'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open("$out\base.apk", 'Update')
 [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$out\dex\classes.dex", 'classes.dex') | Out-Null
-foreach ($icon in Get-ChildItem "$out\assets\icons" -Filter *.png) {
-    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $icon.FullName, "assets/icons/$($icon.Name)") | Out-Null
+foreach ($set in $iconSets) {
+    foreach ($icon in Get-ChildItem "$out\assets\$set" -Filter *.png) {
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $icon.FullName, "assets/$set/$($icon.Name)") | Out-Null
+    }
 }
 $zip.Dispose()
 
