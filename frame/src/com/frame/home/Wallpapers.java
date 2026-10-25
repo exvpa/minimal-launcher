@@ -153,7 +153,7 @@ final class Wallpapers {
     }
 
     /** Repeated separable box blur, which approximates a gaussian on the small bitmap. */
-    private static void boxBlur(Bitmap bmp, int radius, int passes) {
+    static void boxBlur(Bitmap bmp, int radius, int passes) {
         int w = bmp.getWidth(), h = bmp.getHeight();
         int[] a = new int[w * h], b = new int[w * h];
         bmp.getPixels(a, 0, w, 0, 0, w, h);

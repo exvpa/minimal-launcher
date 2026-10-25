@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.KeyEvent;
+import android.widget.FrameLayout;
 
 /** Home screen activity. All drawing and remote handling lives in {@link HomeView}. */
 public class HomeActivity extends Activity {
@@ -18,7 +19,11 @@ public class HomeActivity extends Activity {
         super.onCreate(state);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         view = new HomeView(this);
-        setContentView(view);
+        // Aerial video (when on) plays under the home screen
+        FrameLayout layers = new FrameLayout(this);
+        layers.addView(view.aerialView());
+        layers.addView(view);
+        setContentView(layers);
         // Weather follows the TV's location; without it, Bucharest is used
         if (!Weather.hasPermission(this)) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_LOCATION);

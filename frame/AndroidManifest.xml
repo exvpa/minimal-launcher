@@ -14,7 +14,8 @@
     <application
         android:label="Frame"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".HomeActivity"
