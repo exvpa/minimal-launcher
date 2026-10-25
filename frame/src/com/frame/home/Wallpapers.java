@@ -164,25 +164,29 @@ final class Wallpapers {
         return added;
     }
 
+    /** NASA Image Library searches (Hubble, Webb, Earth from orbit); no key needed. */
+    private static final String[] SPACE_TOPICS = {"nebula", "galaxy", "hubble", "james webb", "earth from space",
+            "aurora from space", "jupiter", "saturn", "milky way", "star cluster", "iss earth", "mars surface"};
+
     /**
-     * NASA's Astronomy Picture of the Day, random days; videos and small or tall images are skipped.
-     * Batches of 6: larger counts time out on NASA's side, and the demo key allows ~10 calls an hour.
+     * NASA's Image and Video Library. (The APOD API currently returns the NASA logo for every
+     * day, so it's not used.) Small, tall or failed images are skipped by save().
      */
     private boolean fetchNasa() throws Exception {
+        String topic = SPACE_TOPICS[random.nextInt(SPACE_TOPICS.length)];
+        String api = "https://images-api.nasa.gov/search?media_type=image&page_size=40&page=" + (1 + random.nextInt(3))
+                + "&q=" + URLEncoder.encode(topic, "UTF-8");
+        JSONArray items = new JSONObject(Http.get(api)).getJSONObject("collection").getJSONArray("items");
         boolean added = false;
-        for (int batch = 0; batch < 4; batch++) added |= fetchNasaBatch();
-        return added;
-    }
-
-    private boolean fetchNasaBatch() throws Exception {
-        JSONArray days = new JSONArray(Http.get("https://api.nasa.gov/planetary/apod?count=6&thumbs=false&api_key=" + key(NASA)));
-        boolean added = false;
-        for (int i = 0; i < days.length(); i++) {
-            JSONObject d = days.getJSONObject(i);
-            if (!"image".equals(d.optString("media_type"))) continue;
-            String url = d.optString("hdurl", d.optString("url", ""));
-            if (url.isEmpty()) continue;
-            added |= save(NASA, "apod" + d.optString("date", "" + i).replace("-", ""), url);
+        int saved = 0;
+        for (int i = 0; i < items.length() && saved < 15; i++) {
+            String id = items.getJSONObject(i).getJSONArray("data").getJSONObject(0).getString("nasa_id");
+            String base = "https://images-assets.nasa.gov/image/" + URLEncoder.encode(id, "UTF-8").replace("+", "%20") + "/"
+                    + URLEncoder.encode(id, "UTF-8").replace("+", "%20");
+            // "large" is ~2000 px; some items only have the (sometimes huge) original
+            boolean ok = save(NASA, "nasa_" + id, base + "~large.jpg") || save(NASA, "nasa_" + id, base + "~orig.jpg");
+            if (ok) saved++;
+            added |= ok;
         }
         return added;
     }
