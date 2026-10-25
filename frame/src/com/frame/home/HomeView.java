@@ -31,7 +31,6 @@ import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.view.KeyEvent;
-import android.view.SoundEffectConstants;
 import android.view.TextureView;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
@@ -86,6 +85,7 @@ public class HomeView extends View {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Wallpapers wallpapers;
+    private final Sounds sounds;
     private final Aerials aerials;
     private Bitmap aerialBlur;      // latest blurred video frame for the glass
     private final Weather weather;
@@ -205,7 +205,7 @@ public class HomeView extends View {
         int i = 0;
         while (i < INPUT_ICONS.length && !INPUT_ICONS[i].equals(current)) i++;
         prefs.edit().putString("icon:" + item.key(), INPUT_ICONS[(i + 1) % INPUT_ICONS.length]).apply();
-        playSoundEffect(SoundEffectConstants.CLICK);
+        sounds.nav();
         invalidate();
     }
 
@@ -214,6 +214,9 @@ public class HomeView extends View {
         pm = context.getPackageManager();
         prefs = context.getSharedPreferences("dock", Context.MODE_PRIVATE);
         wallpapers = new Wallpapers(context);
+        sounds = new Sounds(context);
+        // Our own sounds replace the system click on this view
+        setSoundEffectsEnabled(false);
         aerials = new Aerials(context, new Aerials.Listener() {
             @Override
             public void onBlur(Bitmap blur) {
@@ -361,7 +364,7 @@ public class HomeView extends View {
             invalidate();
         });
         anim.start();
-        if (newsFocused) playSoundEffect(SoundEffectConstants.CLICK);
+        if (newsFocused) sounds.nav();
     }
 
     private void showHeadline(int index) {
@@ -847,7 +850,7 @@ public class HomeView extends View {
                     newsFocused = false;
                     topFocused = true;
                 }
-                playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
+                sounds.nav();
                 invalidate();
                 break;
             case KeyEvent.KEYCODE_DPAD_DOWN:
@@ -856,7 +859,7 @@ public class HomeView extends View {
                     topFocused = false;
                     newsFocused = false;
                     focusTime = SystemClock.uptimeMillis();
-                    playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
+                    sounds.nav();
                     invalidate();
                 }
                 break;
@@ -893,6 +896,7 @@ public class HomeView extends View {
     private void longPress() {
         if (settingsOpen) return;
         if (topFocused && TOP_BUTTONS[topIndex].equals("settings")) {
+            sounds.click();
             settingsOpen = true;
             settingsRow = 0;
             invalidate();
@@ -900,7 +904,7 @@ public class HomeView extends View {
             if (!apps.isEmpty()) addToDock(apps.get(appsIndex));
         } else if (!editing && !topFocused && !newsFocused && !dock.isEmpty()) {
             editing = true;
-            playSoundEffect(SoundEffectConstants.CLICK);
+            sounds.nav();
             invalidate();
         }
     }
@@ -919,7 +923,7 @@ public class HomeView extends View {
                 break;
             default: return;
         }
-        playSoundEffect(SoundEffectConstants.CLICK);
+        sounds.nav();
         invalidate();
     }
 
@@ -954,7 +958,7 @@ public class HomeView extends View {
             handler.removeCallbacks(newsTick);
             handler.post(newsTick);
         }
-        playSoundEffect(SoundEffectConstants.CLICK);
+        sounds.nav();
         invalidate();
     }
 
@@ -1016,7 +1020,7 @@ public class HomeView extends View {
     private void moveTopFocus(int i) {
         if (i < 0 || i >= TOP_BUTTONS.length) return;
         topIndex = i;
-        playSoundEffect(SoundEffectConstants.CLICK);
+        sounds.nav();
         invalidate();
     }
 
@@ -1030,7 +1034,7 @@ public class HomeView extends View {
             invalidate();
             return;
         }
-        playSoundEffect(SoundEffectConstants.CLICK);
+        sounds.nav();
         focusAnim = ValueAnimator.ofFloat(focusX, i).setDuration(170);
         focusAnim.setInterpolator(new DecelerateInterpolator(1.6f));
         focusAnim.addUpdateListener(a -> {
@@ -1058,6 +1062,7 @@ public class HomeView extends View {
     // --- all apps panel
 
     private void openApps() {
+        sounds.click();
         apps.clear();
         Set<String> seen = new HashSet<>();
         String[] categories = {Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER};
@@ -1098,7 +1103,7 @@ public class HomeView extends View {
             default:
                 return;
         }
-        if (i != appsIndex) playSoundEffect(SoundEffectConstants.CLICK);
+        if (i != appsIndex) sounds.nav();
         appsIndex = i;
         int row = i / APP_COLS;
         if (row < appsFirstRow) appsFirstRow = row;
@@ -1137,6 +1142,7 @@ public class HomeView extends View {
     }
 
     private boolean start(Intent i) {
+        sounds.click();
         try {
             getContext().startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
