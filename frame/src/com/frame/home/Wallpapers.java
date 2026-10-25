@@ -72,6 +72,7 @@ final class Wallpapers {
     private final Random random = new Random();
     private volatile String source = BING;
     private String lastName;
+    private Runnable onFirst;   // shows a just-switched source as soon as its first photo arrives
 
     Wallpapers(Context context) {
         root = context.getFilesDir();
@@ -117,6 +118,7 @@ final class Wallpapers {
     /** Fetches new photos for the active source(s) at most every 12 hours; onNew runs if any arrived. */
     void refresh(final Runnable onNew) {
         io.execute(() -> {
+            onFirst = onNew;
             boolean added = false;
             for (String src : active()) {
                 if (!available(src)) continue;
@@ -135,7 +137,8 @@ final class Wallpapers {
                 prefs.edit().putLong(stamp, System.currentTimeMillis()).apply();
                 prune(src);
             }
-            if (added) main.post(onNew);
+            if (added && onFirst != null) main.post(onNew);
+            onFirst = null;
         });
     }
 
@@ -215,6 +218,11 @@ final class Wallpapers {
         if (o.outWidth < 1600 || o.outWidth < o.outHeight * 1.3f) {
             file.delete();
             return false;
+        }
+        if (onFirst != null && files(src).length == 1 && !source.equals(MIXED)) {
+            Runnable r = onFirst;
+            onFirst = null;
+            main.post(r);
         }
         return true;
     }
