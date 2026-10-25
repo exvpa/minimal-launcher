@@ -123,6 +123,7 @@ final class Wallpapers {
             boolean added = false;
             for (String src : active()) {
                 if (!available(src)) continue;
+                Log.i("Frame", "wallpapers: refresh " + src + ", cached " + files(src).length);
                 String stamp = "fetched-" + src;
                 if (System.currentTimeMillis() - prefs.getLong(stamp, 0) < REFRESH_MS && files(src).length > 0) continue;
                 try {
@@ -228,6 +229,7 @@ final class Wallpapers {
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(file.getPath(), o);
         if (o.outWidth < 1600 || o.outWidth < o.outHeight * 1.3f) {
+            Log.i("Frame", "wallpapers: " + src + " skipped " + o.outWidth + "x" + o.outHeight);
             file.delete();
             return false;
         }
