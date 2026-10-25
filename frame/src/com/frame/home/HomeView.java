@@ -209,6 +209,7 @@ public class HomeView extends View {
         pm = context.getPackageManager();
         prefs = context.getSharedPreferences("dock", Context.MODE_PRIVATE);
         wallpapers = new Wallpapers(context);
+        wallpapers.setSource(prefs.getString("wallSource", Wallpapers.BING));
         weather = new Weather(context);
         light = inter(context, "'wght' 300, 'opsz' 32", "sans-serif-light");
         regular = inter(context, "'wght' 400", "sans-serif");
@@ -364,6 +365,27 @@ public class HomeView extends View {
     }
 
     private static final String[] ICON_STYLES = {"macOS", "White", "Color"};
+
+    private static final String[] WALLS = {Wallpapers.BING, Wallpapers.NASA, Wallpapers.UNSPLASH, Wallpapers.PEXELS, Wallpapers.MIXED};
+    private static final String[] WALL_NAMES = {"Bing", "NASA", "Unsplash", "Pexels", "Mixed"};
+
+    private int wallIndex() {
+        String s = prefs.getString("wallSource", Wallpapers.BING);
+        for (int i = 0; i < WALLS.length; i++) if (WALLS[i].equals(s)) return i;
+        return 0;
+    }
+
+    private boolean wallUsable(String s) {
+        return s.equals(Wallpapers.MIXED) || wallpapers.available(s);
+    }
+
+    /** Points the wallpapers at the chosen source; when switching, fetches and shows one right away. */
+    private void applyWallSource(boolean switched) {
+        wallpapers.setSource(WALLS[wallIndex()]);
+        if (!switched) return;
+        wallpapers.refresh(() -> wallpapers.next(this::show));
+        wallpapers.next(this::show);
+    }
 
     private int iconStyle() {
         return Math.min(prefs.getInt("iconStyle", Glyphs.STYLE_MAC), ICON_STYLES.length - 1);
@@ -642,11 +664,11 @@ public class HomeView extends View {
     private void drawSettings(Canvas c) {
         fill.setColor(0x99000000);
         c.drawRect(SCREEN, fill);
-        RectF p = new RectF(W / 2 - 420, H / 2 - 270, W / 2 + 420, H / 2 + 270);
+        RectF p = new RectF(W / 2 - 420, H / 2 - 318, W / 2 + 420, H / 2 + 318);
         glass(c, p, 44);
         drawText(c, "Frame settings", p.left + 56, p.top + 84, 38, medium, 0xFFFFFFFF, Paint.Align.LEFT);
-        String[] labels = {"News headlines", "News topic", "Icon style"};
-        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], ICON_STYLES[iconStyle()]};
+        String[] labels = {"News headlines", "News topic", "Icon style", "Wallpaper"};
+        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], ICON_STYLES[iconStyle()], WALL_NAMES[wallIndex()]};
         for (int i = 0; i < labels.length; i++) {
             RectF row = new RectF(p.left + 32, p.top + 130 + i * 96, p.right - 32, p.top + 210 + i * 96);
             boolean focused = i == settingsRow;
@@ -828,7 +850,7 @@ public class HomeView extends View {
     private void settingsKey(int k) {
         switch (k) {
             case KeyEvent.KEYCODE_DPAD_UP: settingsRow = Math.max(0, settingsRow - 1); break;
-            case KeyEvent.KEYCODE_DPAD_DOWN: settingsRow = Math.min(2, settingsRow + 1); break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: settingsRow = Math.min(3, settingsRow + 1); break;
             case KeyEvent.KEYCODE_DPAD_LEFT: changeSetting(-1); return;
             case KeyEvent.KEYCODE_DPAD_RIGHT: changeSetting(1); return;
             case KeyEvent.KEYCODE_BACK:
@@ -848,6 +870,12 @@ public class HomeView extends View {
             handler.removeCallbacks(newsTick);
             if (on) handler.post(newsTick);
             else headlines = new ArrayList<>();
+        } else if (settingsRow == 3) {
+            // Skip sources that can't work yet (Unsplash / Pexels without a key)
+            int n = WALLS.length, i = wallIndex();
+            do i = (i + dir + n) % n; while (!wallUsable(WALLS[i]));
+            prefs.edit().putString("wallSource", WALLS[i]).apply();
+            applyWallSource(true);
         } else if (settingsRow == 2) {
             int n = ICON_STYLES.length;
             prefs.edit().putInt("iconStyle", (iconStyle() + dir + n) % n).apply();
