@@ -1,6 +1,6 @@
 # minimal-launcher
 
-A quiet home screen for Google TV / Android TV in a macOS-inspired style: a photo, the time, the weather and your apps on a clear frosted-glass dock that magnifies the focused app, built for the remote. Inspired by [CleanFrame](https://github.com/nthnclrk/CleanFrame) (Samsung Tizen), rewritten for Android TV.
+A quiet home screen for Google TV / Android TV in a macOS-inspired style: a photo, the time, the weather and your apps on a clear frosted-glass dock that magnifies the focused app (with a little wiggle), built for the remote. Inspired by [CleanFrame](https://github.com/nthnclrk/CleanFrame) (Samsung Tizen), rewritten for Android TV.
 
 ![Home screen](docs/screenshot.png)
 

@@ -23,6 +23,7 @@ import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.net.Uri;
 import android.provider.Settings;
 import android.text.StaticLayout;
@@ -102,6 +103,7 @@ public class HomeView extends View {
     private boolean topFocused;
     private int dockIndex, topIndex;
     private float focusX;
+    private long focusTime;   // when the dock focus last moved; drives the wiggle
     private ValueAnimator focusAnim;
 
     private final News news = new News();
@@ -642,7 +644,10 @@ public class HomeView extends View {
             float lift = focused && editing ? 14 : 0;
             int alpha = editing && !focused ? 0x80 : 0xFF;
             RectF box = new RectF(cx - size / 2, base - size - lift, cx + size / 2, base - lift);
+            boolean wiggle = focused && !editing;
+            if (wiggle) wiggle(c, box);
             if (!Glyphs.drawFit(c, iconId(item), box, (alpha << 24) | 0xFFFFFF)) tile(c, item.label, box, alpha);
+            if (wiggle) c.restore();
             x += w;
         }
         if (editing && dockFocused) {
@@ -653,6 +658,22 @@ public class HomeView extends View {
             drawText(c, hint, W / 2, base - icon * (1 + MAG) - 40, 24, medium, 0xF2FFFFFF, Paint.Align.CENTER);
             text.clearShadowLayer();
         }
+    }
+
+    /**
+     * Wiggle for the focused icon: a quick sway that settles after landing on it, then a slow,
+     * barely-there sway so the selection stays easy to spot. Pivots near the icon's base.
+     */
+    private void wiggle(Canvas c, RectF box) {
+        float t = (SystemClock.uptimeMillis() - focusTime) / 1000f;
+        float land = (float) Math.exp(-t * 2.6f);                       // fades over ~1 s
+        float angle = (float) (7f * land * Math.sin(t * 2 * Math.PI * 3.2f)      // landing sway
+                + 1.6f * Math.sin(t * 2 * Math.PI * 0.55f));                       // idle sway
+        float dy = (float) (-4f * land * Math.abs(Math.sin(t * 2 * Math.PI * 3.2f)));
+        c.save();
+        c.translate(0, dy);
+        c.rotate(angle, box.centerX(), box.bottom - box.height() * 0.15f);
+        postInvalidateOnAnimation();
     }
 
     /** Stand-in for apps without a library icon: a frosted tile with the app's initial. */
@@ -834,6 +855,7 @@ public class HomeView extends View {
                 if (topFocused || newsFocused) {
                     topFocused = false;
                     newsFocused = false;
+                    focusTime = SystemClock.uptimeMillis();
                     playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
                     invalidate();
                 }
@@ -1001,6 +1023,7 @@ public class HomeView extends View {
     private void moveDockFocus(int i, boolean animate) {
         if (i < 0 || i >= dock.size()) return;
         dockIndex = i;
+        focusTime = SystemClock.uptimeMillis();
         if (focusAnim != null) focusAnim.cancel();
         if (!animate) {
             focusX = i;
