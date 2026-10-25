@@ -38,7 +38,7 @@ final class Http {
     private static void copy(String url, OutputStream out, String header, String value) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(15000);
-        conn.setReadTimeout(20000);
+        conn.setReadTimeout(60000);   // NASA's APOD API can take 30 s+
         conn.setRequestProperty("User-Agent", "Frame/0.1 (Android TV)");
         if (header != null) conn.setRequestProperty(header, value);
         try {
