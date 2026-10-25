@@ -232,7 +232,9 @@ final class Wallpapers {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(file.getPath(), o);
-        if (o.outWidth < 1600 || o.outWidth < o.outHeight * 1.3f) {
+        // Space images are often square: fine once cropped to the screen. Photos must be landscape.
+        float minAspect = src.equals(NASA) ? 1.0f : 1.3f;
+        if (o.outWidth < 1600 || o.outWidth < o.outHeight * minAspect) {
             Log.i("Frame", "wallpapers: " + src + " skipped " + o.outWidth + "x" + o.outHeight);
             file.delete();
             return false;
