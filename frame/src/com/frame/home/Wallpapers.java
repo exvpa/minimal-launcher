@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -131,8 +132,9 @@ final class Wallpapers {
                         case PEXELS: added |= fetchPexels(); break;
                         default: added |= fetchBing(); break;
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // Offline or over the API limit: try again next refresh
+                    Log.w("Frame", "wallpapers: " + src + " failed: " + e);
                 }
                 prefs.edit().putLong(stamp, System.currentTimeMillis()).apply();
                 prune(src);
@@ -219,6 +221,7 @@ final class Wallpapers {
         try {
             Http.download(url, file);
         } catch (Exception e) {
+            Log.w("Frame", "wallpapers: " + src + " download failed: " + e);
             return false;
         }
         BitmapFactory.Options o = new BitmapFactory.Options();
