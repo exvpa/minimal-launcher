@@ -229,6 +229,7 @@ public class HomeView extends View {
                 invalidate();
             }
         });
+        wallpapers.setSource(prefs.getString("wallSource", Wallpapers.BING));
         weather = new Weather(context);
         light = inter(context, "'wght' 300, 'opsz' 32", "sans-serif-light");
         regular = inter(context, "'wght' 400", "sans-serif");
@@ -387,6 +388,27 @@ public class HomeView extends View {
     }
 
     private static final String[] ICON_STYLES = {"macOS", "White", "Color"};
+
+    private static final String[] WALLS = {Wallpapers.BING, Wallpapers.NASA, Wallpapers.UNSPLASH, Wallpapers.PEXELS, Wallpapers.MIXED};
+    private static final String[] WALL_NAMES = {"Bing", "NASA", "Unsplash", "Pexels", "Mixed"};
+
+    private int wallIndex() {
+        String s = prefs.getString("wallSource", Wallpapers.BING);
+        for (int i = 0; i < WALLS.length; i++) if (WALLS[i].equals(s)) return i;
+        return 0;
+    }
+
+    private boolean wallUsable(String s) {
+        return s.equals(Wallpapers.MIXED) || wallpapers.available(s);
+    }
+
+    /** Points the wallpapers at the chosen source; when switching, fetches and shows one right away. */
+    private void applyWallSource(boolean switched) {
+        wallpapers.setSource(WALLS[wallIndex()]);
+        if (!switched) return;
+        wallpapers.refresh(() -> wallpapers.next(this::show));
+        wallpapers.next(this::show);
+    }
 
     private int iconStyle() {
         return Math.min(prefs.getInt("iconStyle", Glyphs.STYLE_MAC), ICON_STYLES.length - 1);
@@ -683,7 +705,8 @@ public class HomeView extends View {
         glass(c, p, 44);
         drawText(c, "Frame settings", p.left + 56, p.top + 84, 38, medium, 0xFFFFFFFF, Paint.Align.LEFT);
         String[] labels = {"News headlines", "News topic", "Icon style", "Wallpaper"};
-        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], ICON_STYLES[iconStyle()], aerialsEnabled() ? "Apple Aerials" : "Photos"};
+        String[] values = {newsEnabled() ? "On" : "Off", News.TOPIC_NAMES[newsTopic()], ICON_STYLES[iconStyle()],
+                aerialsEnabled() ? "Apple Aerials" : WALL_NAMES[wallIndex()]};
         for (int i = 0; i < labels.length; i++) {
             RectF row = new RectF(p.left + 32, p.top + 130 + i * 96, p.right - 32, p.top + 210 + i * 96);
             boolean focused = i == settingsRow;
@@ -886,10 +909,19 @@ public class HomeView extends View {
             if (on) handler.post(newsTick);
             else headlines = new ArrayList<>();
         } else if (settingsRow == 3) {
-            boolean on = !aerialsEnabled();
-            prefs.edit().putBoolean("aerials", on).apply();
-            if (on) aerials.start();
-            else aerials.stop();
+            // Photo sources, then Apple Aerials (local build only) as one more stop in the cycle
+            int n = WALLS.length + 1;
+            int i = aerialsEnabled() ? WALLS.length : wallIndex();
+            do i = (i + dir + n) % n; while (i < WALLS.length && !wallUsable(WALLS[i]));
+            boolean aerial = i == WALLS.length;
+            prefs.edit().putBoolean("aerials", aerial).apply();
+            if (aerial) {
+                aerials.start();
+            } else {
+                aerials.stop();
+                prefs.edit().putString("wallSource", WALLS[i]).apply();
+                applyWallSource(true);
+            }
         } else if (settingsRow == 2) {
             int n = ICON_STYLES.length;
             prefs.edit().putInt("iconStyle", (iconStyle() + dir + n) % n).apply();

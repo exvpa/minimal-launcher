@@ -14,8 +14,12 @@ final class Http {
     private Http() {}
 
     static String get(String url) throws IOException {
+        return get(url, null, null);
+    }
+
+    static String get(String url, String header, String value) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        copy(url, out);
+        copy(url, out, header, value);
         return out.toString("UTF-8");
     }
 
@@ -23,7 +27,7 @@ final class Http {
     static void download(String url, File dest) throws IOException {
         File tmp = new File(dest.getPath() + ".tmp");
         try (OutputStream out = new FileOutputStream(tmp)) {
-            copy(url, out);
+            copy(url, out, null, null);
         }
         if (!tmp.renameTo(dest)) {
             tmp.delete();
@@ -31,11 +35,12 @@ final class Http {
         }
     }
 
-    private static void copy(String url, OutputStream out) throws IOException {
+    private static void copy(String url, OutputStream out, String header, String value) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(20000);
         conn.setRequestProperty("User-Agent", "Frame/0.1 (Android TV)");
+        if (header != null) conn.setRequestProperty(header, value);
         try {
             if (conn.getResponseCode() != 200) throw new IOException("HTTP " + conn.getResponseCode() + " " + url);
             try (InputStream in = conn.getInputStream()) {
