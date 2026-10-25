@@ -11,3 +11,6 @@ disabled-packages*.txt
 
 # Built app (attach to a GitHub release instead)
 *.apk
+
+# API keys for wallpaper sources
+keys.properties

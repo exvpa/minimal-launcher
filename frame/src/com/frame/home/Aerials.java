@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Apple TV aerial videos as a moving background (personal use only, not published).
+ * Apple TV aerial videos as a moving background, streamed from Apple's servers (nothing of Apple's is bundled).
  * The video list comes from Apple's entries.json; clips stream over plain HTTP, since
  * sylvan.apple.com's certificate chains to Apple's own root, which Android doesn't trust.
  */

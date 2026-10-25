@@ -6,7 +6,10 @@ A quiet home screen for Google TV / Android TV in a macOS-inspired style: a phot
 
 ## Features
 
-- **Dynamic wallpaper**: landscape photos from Bing's daily image archive, changing every 10 minutes with a slow crossfade. Cached on the TV, so it still works offline.
+- **Dynamic wallpaper**, changing every 10 minutes with a slow crossfade, from a source chosen under Frame settings → Wallpaper:
+  - **Bing** daily images, **NASA** Image Library (Hubble, Webb, Earth from orbit), **Unsplash**, **Pexels**, or all of them **Mixed**. Photos are cached on the TV, so it still works offline.
+  - **Apple Aerials**: Apple TV's aerial screensaver videos, streamed at 1080p from Apple's servers while the home screen is open (about 7–10 GB an hour). Nothing of Apple's is bundled in this repository.
+  - Unsplash and Pexels need a free API key in `keys.properties` on the TV (see *Wallpaper keys*).
 - **Typeface**: [Inter](https://rsms.me/inter/) (SIL OFL, `frame/fonts/`), the open font closest to SF Pro.
 - **Top left**: clock, date and current weather for the TV's location ([Open-Meteo](https://open-meteo.com), no API key). The location comes from Android's location services (Wi-Fi based on a TV, coarse permission only); without it, Bucharest is used.
 - **Top right**: Google search (voice or keyboard), Play Store, All apps, TV settings.
@@ -67,6 +70,21 @@ Icons are white-on-transparent PNGs named after the app's package, e.g. `com.net
   ```
 
 Find an app's package with `adb shell pm list packages | findstr <name>`.
+
+## Wallpaper keys
+
+Unsplash and Pexels need a free API key. Put them in a `keys.properties` file (never commit it) and copy it to the TV:
+
+```text
+unsplash=YOUR_ACCESS_KEY
+pexels=YOUR_KEY
+```
+
+```powershell
+adb push keys.properties /sdcard/Android/data/com.frame.home/files/
+```
+
+Sources without a key are skipped in the settings.
 
 ## Customise
 
