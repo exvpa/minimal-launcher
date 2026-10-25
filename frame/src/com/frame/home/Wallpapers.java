@@ -161,9 +161,18 @@ final class Wallpapers {
         return added;
     }
 
-    /** NASA's Astronomy Picture of the Day, 25 random days; videos and small or tall images are skipped. */
+    /**
+     * NASA's Astronomy Picture of the Day, random days; videos and small or tall images are skipped.
+     * Batches of 8: larger counts time out on NASA's side, and the demo key allows ~10 calls an hour.
+     */
     private boolean fetchNasa() throws Exception {
-        JSONArray days = new JSONArray(Http.get("https://api.nasa.gov/planetary/apod?count=25&thumbs=false&api_key=" + key(NASA)));
+        boolean added = false;
+        for (int batch = 0; batch < 3; batch++) added |= fetchNasaBatch();
+        return added;
+    }
+
+    private boolean fetchNasaBatch() throws Exception {
+        JSONArray days = new JSONArray(Http.get("https://api.nasa.gov/planetary/apod?count=8&thumbs=false&api_key=" + key(NASA)));
         boolean added = false;
         for (int i = 0; i < days.length(); i++) {
             JSONObject d = days.getJSONObject(i);
