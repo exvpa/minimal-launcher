@@ -76,10 +76,11 @@ public class HomeView extends View {
     // Design canvas and layout, in 1920x1080 pixels
     private static final float W = 1920f, H = 1080f, MARGIN = 96f;
     // macOS-style dock: icons only, the focused one magnified (MAG) with neighbours easing off (SPREAD)
-    private static final float ICON = 92f, SLOT = 112f, DOCK_MAX_W = 1720f, DOCK_H = 124f, DOCK_PAD = 16f, DOCK_BOTTOM = 64f;
+    private static final float ICON = 110f, SLOT = 160f, DOCK_MAX_W = 1720f, DOCK_H = 142f, DOCK_PAD = 16f, DOCK_BOTTOM = 64f;
     private static final float MAG = 0.6f, SPREAD = 1.05f;
     private static final float BTN = 64f, BTN_GAP = 10f, BTN_PAD = 8f, TOP_Y = 70f;
-    private static final float NEWS_W = W / 3, NEWS_TOP = 290f;   // headline starts just under the weather line
+    private static final float NEWS_W = W / 3, NEWS_TOP = 78f;   // headline at the top left, level with the top bar
+    private static final float CLOCK_TOP = 250f, CLOCK_SIZE = 420f;
     private static final int APP_COLS = 6, APP_ROWS = 3;
     private static final RectF SCREEN = new RectF(0, 0, W, H);
 
@@ -127,7 +128,7 @@ public class HomeView extends View {
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Path clip = new Path();
-    private final Typeface light, regular, medium;
+    private final Typeface light, regular, medium, clockFace;
     private final Paint topScrim = new Paint(), bottomScrim = new Paint();
 
     /** A dock entry: an installed app. All apps lives in the top bar. */
@@ -239,6 +240,8 @@ public class HomeView extends View {
         light = inter(context, "'wght' 300, 'opsz' 32", "sans-serif-light");
         regular = inter(context, "'wght' 400", "sans-serif");
         medium = inter(context, "'wght' 560", "sans-serif-medium");
+        // Antonio: tall, compressed and light, close to the iOS lock-screen clock (SF Pro compressed)
+        clockFace = font(context, "fonts/Antonio.ttf", "'wght' 220", "sans-serif-condensed");
         Glyphs.init(context);
         Glyphs.setStyle(iconStyle());
         line.setStyle(Paint.Style.STROKE);
@@ -421,8 +424,12 @@ public class HomeView extends View {
 
     /** Inter, the open font closest to SF Pro (which can't be bundled outside Apple platforms). */
     private static Typeface inter(Context context, String variation, String fallback) {
+        return font(context, "fonts/Inter.ttf", variation, fallback);
+    }
+
+    private static Typeface font(Context context, String asset, String variation, String fallback) {
         try {
-            Typeface tf = new Typeface.Builder(context.getAssets(), "fonts/Inter.ttf")
+            Typeface tf = new Typeface.Builder(context.getAssets(), asset)
                     .setFontVariationSettings(variation).build();
             if (tf != null) return tf;
         } catch (RuntimeException ignored) {
@@ -540,6 +547,11 @@ public class HomeView extends View {
 
     /** Frosted glass: the pre-blurred photo, clipped to the shape, with a light tint and hairline edge. */
     private void glass(Canvas c, RectF r, float radius) {
+        glass(c, r, radius, 1f);
+    }
+
+    /** strength scales the tint: 1 for panels, higher for a more solid dock. */
+    private void glass(Canvas c, RectF r, float radius, float strength) {
         c.save();
         clip.reset();
         clip.addRoundRect(r, radius, radius, Path.Direction.CW);
@@ -555,9 +567,9 @@ public class HomeView extends View {
             c.drawBitmap(aerialBlur, null, SCREEN, bitmapPaint);
         }
         // As clear as possible while staying readable, like macOS vibrancy
-        fill.setColor(0x08000000);
+        fill.setColor((int) (0x08 * strength) << 24);
         c.drawRect(r, fill);
-        fill.setColor(0x14FFFFFF);
+        fill.setColor((int) (0x14 * strength) << 24 | 0xFFFFFF);
         c.drawRect(r, fill);
         c.restore();
         line.setColor(0x40FFFFFF);
@@ -567,14 +579,31 @@ public class HomeView extends View {
     private void drawClock(Canvas c) {
         Date now = new Date();
         String pattern = DateFormat.is24HourFormat(getContext()) ? "HH:mm" : "h:mm";
-        text.setShadowLayer(18f, 0f, 2f, 0x66000000);
-        drawText(c, new SimpleDateFormat(pattern, Locale.ENGLISH).format(now), MARGIN - 5, 160, 90, light, 0xFFFFFFFF, Paint.Align.LEFT);
-        drawText(c, new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now), MARGIN, 204, 26, regular, 0xF0FFFFFF, Paint.Align.LEFT);
+        // Date · weather, centred above the clock
+        String date = new SimpleDateFormat("EEEE, d MMMM", Locale.ENGLISH).format(now);
+        String weatherText = report == null ? "" : report.temperature + "°" + (report.place.isEmpty() ? "" : "  " + report.place);
+        float dateSize = 30, icon = 30, gap = 22;
+        text.setTypeface(medium);
+        text.setTextSize(dateSize);
+        float dateW = text.measureText(date);
+        float weatherW = report == null ? 0 : gap + icon + 10 + text.measureText(weatherText);
+        float x = (W - dateW - weatherW) / 2, lineY = CLOCK_TOP;
+        text.setShadowLayer(14f, 0f, 2f, 0x59000000);
+        drawText(c, date, x, lineY, dateSize, medium, 0xF2FFFFFF, Paint.Align.LEFT);
         if (report != null) {
-            Glyphs.draw(c, report.icon, MARGIN + 15, 240, 28, 0xF0FFFFFF);
-            String weatherText = report.temperature + "°" + (report.place.isEmpty() ? "" : "  " + report.place);
-            drawText(c, weatherText, MARGIN + 40, 249, 23, regular, 0xE6FFFFFF, Paint.Align.LEFT);
+            float ix = x + dateW + gap;
+            Glyphs.draw(c, report.icon, ix + icon / 2, lineY - dateSize * 0.36f, icon, 0xF2FFFFFF);
+            drawText(c, weatherText, ix + icon + 10, lineY, dateSize, medium, 0xF2FFFFFF, Paint.Align.LEFT);
         }
+        // The clock: large, bold and slightly see-through, as the screen's centrepiece
+        text.setShadowLayer(30f, 0f, 4f, 0x40000000);
+        // A bit more compressed than Antonio's default, with the digits drawn closer together
+        text.setTextScaleX(0.88f);
+        text.setLetterSpacing(-0.05f);
+        drawText(c, new SimpleDateFormat(pattern, Locale.ENGLISH).format(now), W / 2, lineY + 20 + CLOCK_SIZE * 0.86f,
+                CLOCK_SIZE, clockFace, 0x80FFFFFF, Paint.Align.CENTER);
+        text.setTextScaleX(1f);
+        text.setLetterSpacing(0f);
         text.clearShadowLayer();
     }
 
@@ -637,7 +666,7 @@ public class HomeView extends View {
             width += slot * scale[i];
         }
         RectF r = new RectF((W - width) / 2, rest.top, (W + width) / 2, rest.bottom);
-        glass(c, r, 36);
+        glass(c, r, 36, 0.6f);
         float x = r.left + DOCK_PAD, base = r.bottom - DOCK_PAD;
         boolean dockFocused = !topFocused && !newsFocused && !appsOpen;
         for (int i = 0; i < dock.size(); i++) {

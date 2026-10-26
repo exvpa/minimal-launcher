@@ -2,6 +2,7 @@ package com.frame.home;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.util.Xml;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -77,8 +78,11 @@ final class News {
                 : "https://news.google.com/rss/headlines/section/topic/" + topic;
         String url = base + "?hl=" + hl + "&gl=" + country + "&ceid=" + country + ":" + lang;
         try {
-            return parse(Http.get(url));
+            List<Item> items = parse(Http.get(url));
+            Log.i("Frame", "news: " + country + "/" + topic + " -> " + items.size());
+            return items;
         } catch (Exception e) {
+            Log.w("Frame", "news: " + country + "/" + topic + " failed: " + e);
             return new ArrayList<>();
         }
     }
