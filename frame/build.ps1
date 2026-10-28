@@ -22,7 +22,7 @@ New-Item -ItemType Directory -Force "$out\classes", "$out\dex" | Out-Null
 function Check([string]$step) { if ($LASTEXITCODE -ne 0) { throw "$step failed" } }
 
 # Icon libraries: the source PNGs in icons\ (white), icons-color\ and icons-mac\ are large, so ship 256px copies in assets\
-$iconSets = 'icons', 'icons-color', 'icons-mac'
+$iconSets = 'icons', 'icons-color', 'icons-mac', 'icons-frame'
 Add-Type -AssemblyName System.Drawing
 foreach ($set in $iconSets) {
 New-Item -ItemType Directory -Force "$out\assets\$set" | Out-Null

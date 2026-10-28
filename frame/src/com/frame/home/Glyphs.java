@@ -3,6 +3,7 @@ package com.frame.home;
 import android.content.Context;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
+import android.graphics.BlurMaskFilter;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -39,14 +40,14 @@ final class Glyphs {
      * TV folder (Android/data/com.frame.home/files/icons, filled with adb push), then in the bundled
      * assets/icons/. Loaded on first use and cropped to their visible pixels.
      * The icon style picks which sets are searched first: macOS (icons-mac, then color),
-     * White (icons) or Color (icons-color). Each set: TV folder, then assets.
+     * White (icons), Color (icons-color) or Frame (icons-frame: the white set without its sketch lines). Each set: TV folder, then assets.
      */
     private static final Map<String, Bitmap> images = new HashMap<>();
     private static final Set<String> missing = new HashSet<>();
     private static final Set<String> natural = new HashSet<>();   // ids drawn in their own colors, not tinted
-    static final int STYLE_MAC = 0, STYLE_WHITE = 1, STYLE_COLOR = 2;
+    static final int STYLE_MAC = 0, STYLE_WHITE = 1, STYLE_COLOR = 2, STYLE_FRAME = 3;
     private static final String[][] STYLE_SETS = {
-            {"icons-mac", "icons-color", "icons"}, {"icons"}, {"icons-color", "icons"}};
+            {"icons-mac", "icons-color", "icons"}, {"icons"}, {"icons-color", "icons"}, {"icons-frame", "icons"}};
     private static int style = STYLE_MAC;
     private static final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private static AssetManager assets;
@@ -96,7 +97,7 @@ final class Glyphs {
         for (String set : STYLE_SETS[style]) {
             raw = load(set, id);
             if (raw != null) {
-                if (!set.equals("icons")) natural.add(id);
+                if (!set.equals("icons") && !set.equals("icons-frame")) natural.add(id);
                 break;
             }
         }
@@ -165,6 +166,33 @@ final class Glyphs {
         float w = bmp.getWidth() * s, h = bmp.getHeight() * s;
         imagePaint.setColorFilter(filter(id, color));
         c.drawBitmap(bmp, null, new RectF(box.centerX() - w / 2, box.bottom - h, box.centerX() + w / 2, box.bottom), imagePaint);
+        return true;
+    }
+
+    /**
+     * Centred in a square tile at an even optical size: every logo gets about the same area,
+     * so wide wordmarks grow sideways and square marks don't swell, within the tile's margins.
+     */
+    static boolean drawOptical(Canvas c, String id, RectF box, int color) {
+        return drawOptical(c, id, box, color, 0);
+    }
+
+    /** With glow > 0, a soft blurred copy of the logo in its own colour sits under it. */
+    static boolean drawOptical(Canvas c, String id, RectF box, int color, float glow) {
+        Bitmap bmp = image(id);
+        if (bmp == null) return false;
+        float area = box.width() * box.height() * 0.24f;
+        float s = Math.min((float) Math.sqrt(area / (bmp.getWidth() * bmp.getHeight())),
+                Math.min(box.width() * 0.78f / bmp.getWidth(), box.height() * 0.56f / bmp.getHeight()));
+        float w = bmp.getWidth() * s, h = bmp.getHeight() * s;
+        if (glow > 0) {
+            imagePaint.setColorFilter(filter(id, (color & 0xFFFFFF) | 0x99000000));
+            imagePaint.setMaskFilter(new BlurMaskFilter(glow, BlurMaskFilter.Blur.NORMAL));
+            c.drawBitmap(bmp, null, new RectF(box.centerX() - w / 2, box.centerY() - h / 2, box.centerX() + w / 2, box.centerY() + h / 2), imagePaint);
+            imagePaint.setMaskFilter(null);
+        }
+        imagePaint.setColorFilter(filter(id, color));
+        c.drawBitmap(bmp, null, new RectF(box.centerX() - w / 2, box.centerY() - h / 2, box.centerX() + w / 2, box.centerY() + h / 2), imagePaint);
         return true;
     }
 

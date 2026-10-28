@@ -395,7 +395,7 @@ public class HomeView extends View {
         }
     }
 
-    private static final String[] ICON_STYLES = {"macOS", "White", "Color"};
+    private static final String[] ICON_STYLES = {"macOS", "White", "Color", "Frame"};
 
     private static final String[] WALLS = {Wallpapers.BING, Wallpapers.NASA, Wallpapers.UNSPLASH, Wallpapers.PEXELS, Wallpapers.MIXED};
     private static final String[] WALL_NAMES = {"Bing", "NASA", "Unsplash", "Pexels", "Mixed"};
@@ -628,11 +628,41 @@ public class HomeView extends View {
                 Glyphs.draw(c, "sf." + TOP_BUTTONS[i], cx, cy, 30, focused ? 0xFF1D1D1F : 0xF2FFFFFF);
                 continue;
             }
+            if (iconStyle() == Glyphs.STYLE_FRAME) {
+                Glyphs.draw(c, TOP_BUTTONS[i], cx, cy, 30, focused ? ACCENT : 0xEEFFFFFF);
+                continue;
+            }
             if (focused) {
                 fill.setColor(0xF2FFFFFF);
                 c.drawCircle(cx, cy, BTN / 2, fill);
             }
             Glyphs.draw(c, TOP_BUTTONS[i], cx, cy, 30, focused ? 0xFF15181C : 0xEEFFFFFF);
+        }
+    }
+
+    /** Frame's one accent: the amber of a lit light, for focus only. */
+    private static final int ACCENT = 0xFFFFB45A;
+
+    /**
+     * Frame style: every app on the same graphite squircle with a white line logo; the focused
+     * one turns its logo and edge amber. No app keeps its own colours.
+     */
+    private void frameTile(Canvas c, DockItem item, RectF box, boolean focused, int alpha) {
+        float radius = box.width() * 0.28f;
+        fill.setColor(0x24FFFFFF);
+        c.drawRoundRect(box, radius, radius, fill);
+        line.setStrokeWidth(focused ? box.width() * 0.035f : 1.5f);
+        line.setColor(focused ? ACCENT : 0x1FFFFFFF);
+        // Focus glows softly, like a lit light tile
+        if (focused) line.setShadowLayer(box.width() * 0.12f, 0, 0, 0x99FFB45A);
+        float in = line.getStrokeWidth() / 2;
+        c.drawRoundRect(new RectF(box.left + in, box.top + in, box.right - in, box.bottom - in), radius - in, radius - in, line);
+        line.clearShadowLayer();
+        line.setStrokeWidth(1.5f);
+        int ink = ((focused ? ACCENT : 0xFFEDEDED) & 0xFFFFFF) | (alpha << 24);
+        if (!Glyphs.drawOptical(c, iconId(item), box, ink, focused ? box.width() * 0.08f : 0)) {
+            drawText(c, item.label.substring(0, 1).toUpperCase(Locale.ROOT), box.centerX(), box.centerY() + box.height() * 0.13f,
+                    box.height() * 0.38f, light, ink, Paint.Align.CENTER);
         }
     }
 
@@ -678,7 +708,8 @@ public class HomeView extends View {
             RectF box = new RectF(cx - size / 2, base - size - lift, cx + size / 2, base - lift);
             boolean wiggle = focused && !editing;
             if (wiggle) wiggle(c, box);
-            if (!Glyphs.drawFit(c, iconId(item), box, (alpha << 24) | 0xFFFFFF)) tile(c, item.label, box, alpha);
+            if (iconStyle() == Glyphs.STYLE_FRAME) frameTile(c, item, box, focused && !editing, alpha);
+            else if (!Glyphs.drawFit(c, iconId(item), box, (alpha << 24) | 0xFFFFFF)) tile(c, item.label, box, alpha);
             if (wiggle) c.restore();
             x += w;
         }
